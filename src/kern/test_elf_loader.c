@@ -67,6 +67,8 @@ void main(void) {
     if (result != 0)
         panic("Could not open ser1");
     
+    test_iolit_operations(termio);
+
     test_elf_loader(termio);
 
     shell_main(termio);
@@ -145,10 +147,22 @@ void test_elf_loader(struct io_intf *termio_raw) {
 
     result = elf_load(exeio, &exe_entry);
     if (result == -9) {
-        console_printf("Test 1 Passed: ELF loader rejected big-endian ELF\n");
+        console_printf("Test 1.1 Passed: ELF loader rejected big-endian ELF\n");
     } else {
-        console_printf("Test 1 Failed: Expected rejection, but got %d\n", result);
+        console_printf("Test 1.1 Failed: Expected rejection, but got %d\n", result);
     }
+
+    // Sub-test 1.2: Verify RISC-V 64-bit architecture check
+    test_elf_header->e_machine = 0xFFFF; // Set to an unsupported machine temporarily to simulate failure
+    result = elf_load(exeio, &exe_entry);
+
+    if (result == -3) {
+        console_printf("Test 1.2 Passed: ELF loader rejected non-RISC-V 64-bit ELF\n");
+    } else {
+        console_printf("Test 1.2 Failed: Expected rejection for architecture, but got %d\n", result);
+    }
+
+    test_elf_header->e_machine = RV64_MACHINE;
 
     // Reset endianness for subsequent tests
     test_elf_header->e_ident[5] = ELFDATA2LSB;
@@ -194,3 +208,78 @@ void test_elf_loader(struct io_intf *termio_raw) {
 
     ioclose(exeio);
 }
+
+void test_iolit_operations(struct io_intf *termio_raw) {
+    console_printf("\nTesting io_lit Operations...\n");
+
+    // Define test buffer and io_lit setup
+    char buffer[100] = "Hello, world!";
+    struct io_lit iolit;
+    struct io_intf *io = iolit_init(&iolit, buffer, sizeof(buffer));
+    long result;
+    char read_buf[20];
+    char write_data[] = "TestWrite";
+    uint64_t pos;
+
+    // === Test 1: Read from in-memory buffer ===
+    console_printf("\nTest 1: Read from buffer\n");
+    iolit.pos = 0;  // Reset position to the beginning
+    result = ioread(io, read_buf, sizeof(read_buf) - 1);
+    if (result > 0) {
+        read_buf[result] = '\0'; // Null-terminate read data
+        console_printf("Read Data: %s\n", read_buf);
+    } else {
+        console_printf("Read failed with result: %ld\n", result);
+    }
+
+    // === Test 2: Write to in-memory buffer ===
+    console_printf("\nTest 2: Write to buffer\n");
+    iolit.pos = 0;  // Reset position to the beginning
+    result = iowrite(io, write_data, sizeof(write_data) - 1);
+    if (result > 0) {
+        console_printf("Write successful. Buffer now contains: %s\n", buffer);
+    } else {
+        console_printf("Write failed with result: %ld\n", result);
+    }
+
+    // === Test 3: Get Length with ioctl ===
+    console_printf("\nTest 3: Get Length with ioctl\n");
+    result = ioctl(io, IOCTL_GETLEN, &pos);
+    if (result == 0) {
+        console_printf("Buffer length: %llu\n", pos);
+    } else {
+        console_printf("Get length failed with result: %ld\n", result);
+    }
+
+    // === Test 4: Get Position with ioctl ===
+    console_printf("\nTest 4: Get Position with ioctl\n");
+    result = ioctl(io, IOCTL_GETPOS, &pos);
+    if (result == 0) {
+        console_printf("Current Position: %llu\n", pos);
+    } else {
+        console_printf("Get position failed with result: %ld\n", result);
+    }
+
+    // === Test 5: Set Position with ioctl ===
+    console_printf("\nTest 5: Set Position with ioctl\n");
+    pos = 6; // Arbitrary position within buffer bounds
+    result = ioctl(io, IOCTL_SETPOS, &pos);
+    if (result == 0) {
+        // Verify position set
+        ioctl(io, IOCTL_GETPOS, &pos);
+        console_printf("Position set successfully. Current Position: %llu\n", pos);
+    } else {
+        console_printf("Set position failed with result: %ld\n", result);
+    }
+
+    // === Test 6: Attempt to set position out of bounds ===
+    console_printf("\nTest 6: Attempt to set position out of bounds\n");
+    pos = 150; // Out of bounds
+    result = ioctl(io, IOCTL_SETPOS, &pos);
+    if (result == -1) {
+        console_printf("Out of bounds position correctly rejected\n");
+    } else {
+        console_printf("Failed: Out of bounds position set with result: %ld\n", result);
+    }
+}
+
