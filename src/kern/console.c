@@ -8,6 +8,7 @@
 
 #include "string.h"
 #include "intr.h"
+#include "uart.h"
 
 //           INTERNAL FUNCTION DECLARATIONS
 //           
