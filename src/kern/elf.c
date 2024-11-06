@@ -1,9 +1,46 @@
+// elf.c - ELF Executable loader implementation
+// This file contains the function for loading and validating ELF (Executable and Linkable Format)
+// files. 'elf_load' reads an ELF file from an I/O interface and loads its executable segments into memory.
+// The function also verifies the ELF magic number, architecture and endianness.
+// 
+// Functions:
+//      int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io))
+//
+// Dependencies:
+//      Requires "elf.h" for ELF structure definitions and "io.h" for the I/O interface used
+//      to read the ELF file.
+//
 #include "elf.h"
 #include "io.h"
 #include <stdint.h>
 #include <string.h> 
 #include "console.h"
 
+/** 
+ * elf_load - Load an ELF executable from an I/O interface.
+ * 
+ * @io: pointer to an I/O interface that allows reading the ELF file.
+ * @entryptr: A pointer to a function pointer, which is set to the entry point of the 
+ *            the ELF file if loading is successful.
+ * 
+ * This function reads the ELF header, validates its magic number, type, and endianness,
+ * and then loads each program segment marked with `PT_LOAD` into memory at its specified
+ * virtual address (`p_vaddr`). It also zeroes out any remaining space if the memory size
+ * (`p_memsz`) is larger than the file size (`p_filesz`). If all validation and loading
+ * steps are successful, `entryptr` is set to the ELF file's entry point.
+ * 
+ * Returns:
+ *      0 on success
+ *     -1 if the ELF header could not be read
+ *     -2 if the ELF magic number is invalid
+ *     -3 if the ELF type or machine is unsupported
+ *     -4 if seeking to the program header fails
+ *     -5 if reading the program header fails
+ *     -6 if a segment is out of bounds
+ *     -7 if seeking to a segment offset fails
+ *     -8 if loading a segment fails
+ *     -9 if the ELF file is not little-endian
+ */
 int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
     Elf64_Ehdr elf_header;
 
