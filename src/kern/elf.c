@@ -1,58 +1,46 @@
+// elf.c - ELF Executable loader implementation
+// This file contains the function for loading and validating ELF (Executable and Linkable Format)
+// files. 'elf_load' reads an ELF file from an I/O interface and loads its executable segments into memory.
+// The function also verifies the ELF magic number, architecture and endianness.
+// 
+// Functions:
+//      int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io))
+//
+// Dependencies:
+//      Requires "elf.h" for ELF structure definitions and "io.h" for the I/O interface used
+//      to read the ELF file.
+//
 #include "elf.h"
 #include "io.h"
 #include <stdint.h>
 #include <string.h> 
+#include "console.h"
 
-//           Relevant defines
-#define EI_NIDENT   16
-#define ELFMAG0     0x7f
-#define ELFMAG1     'E'
-#define ELFMAG2     'L'
-#define ELFMAG3     'F'
-#define PT_LOAD     1  // Program header type for loadable segments
-
-#define RV64_MACHINE 243
-
-// Validate that file is in ELF format
-#define ELF_MAGIC_OK(ehdr) ((ehdr).e_ident[0] == ELFMAG0 && \
-                            (ehdr).e_ident[1] == ELFMAG1 && \
-                            (ehdr).e_ident[2] == ELFMAG2 && \
-                            (ehdr).e_ident[3] == ELFMAG3)
-
-#define LOAD_START  0x80100000
-#define LOAD_END    0x81000000
-
-// Elf Header Structure for 64 bit ELF
-typedef struct elf64_hdr
-{
-    unsigned char   e_ident[EI_NIDENT];     // ELF identification bytes
-    uint16_t        e_type;                 // Object file type
-    uint16_t        e_machine;              // Architecture
-    uint32_t        e_version;              // ELF Version
-    uint64_t        e_entry;                // Entry point address
-    uint64_t        e_phoff;                // Program header table offset
-    uint64_t        e_shoff;                // Section header table offset
-    uint32_t        e_flags;                // Processor specific flags
-    uint16_t        e_ehsize;               // ELF header size
-    uint16_t        e_phentsize;            // Program Header entry size
-    uint16_t        e_phnum;
-    uint16_t        e_shentsize;
-    uint16_t        e_shnum;
-    uint16_t        e_shstrndx;
-} Elf64_Ehdr;
-
-// Program Header Strucutre for 64 bit ELF
-typedef struct elf64_phdr{
-    uint32_t        p_type;
-    uint32_t        p_flags;
-    uint64_t        p_offset;
-    uint64_t        p_vaddr;
-    uint64_t        p_paddr;
-    uint64_t        p_filesz;
-    uint64_t        p_memsz;
-    uint64_t        p_align;
-} Elf64_Phdr;
-
+/** 
+ * elf_load - Load an ELF executable from an I/O interface.
+ * 
+ * @io: pointer to an I/O interface that allows reading the ELF file.
+ * @entryptr: A pointer to a function pointer, which is set to the entry point of the 
+ *            the ELF file if loading is successful.
+ * 
+ * This function reads the ELF header, validates its magic number, type, and endianness,
+ * and then loads each program segment marked with `PT_LOAD` into memory at its specified
+ * virtual address (`p_vaddr`). It also zeroes out any remaining space if the memory size
+ * (`p_memsz`) is larger than the file size (`p_filesz`). If all validation and loading
+ * steps are successful, `entryptr` is set to the ELF file's entry point.
+ * 
+ * Returns:
+ *      0 on success
+ *     -1 if the ELF header could not be read
+ *     -2 if the ELF magic number is invalid
+ *     -3 if the ELF type or machine is unsupported
+ *     -4 if seeking to the program header fails
+ *     -5 if reading the program header fails
+ *     -6 if a segment is out of bounds
+ *     -7 if seeking to a segment offset fails
+ *     -8 if loading a segment fails
+ *     -9 if the ELF file is not little-endian
+ */
 int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
     Elf64_Ehdr elf_header;
 
@@ -68,6 +56,10 @@ int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
     // 2. Verify ELF type and architecture for 64-bit RISC-V
     if (elf_header.e_type != 2 || elf_header.e_machine != RV64_MACHINE){
         return -3; // Unsupported ELF type or machine
+    }
+
+    if(elf_header.e_ident[5] != ELFDATA2LSB){
+        return -9; // NOT Little-Endian
     }
 
     // 3. Parse and load each program header
@@ -109,6 +101,8 @@ int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
 
     // 4. Set the entry point function pointer
     *entryptr = (void (*)(struct io_intf *io))elf_header.e_entry;
+
+    console_printf("\n Entryptr: %p", (void*)*entryptr);
 
     return 0; // Success
 }

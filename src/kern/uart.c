@@ -4,6 +4,7 @@
 #include "uart.h"
 
 #include <stdint.h>
+#include <limits.h>
 
 #include "device.h"
 #include "error.h"
@@ -11,6 +12,7 @@
 #include "heap.h"
 #include "halt.h"
 #include "intr.h"
+
 
 //           COMPILE-TIME CONSTANT DEFINITIONS
 //          

@@ -23,6 +23,9 @@ static void ioterm_close(struct io_intf * io);
 static long ioterm_read(struct io_intf * io, void * buf, size_t len);
 static long ioterm_write(struct io_intf * io, const void * buf, size_t len);
 static int ioterm_ioctl(struct io_intf * io, int cmd, void * arg);
+static long lit_read (struct io_intf *io, void *buf, unsigned long bufsz);
+static long lit_write (struct io_intf *io, const void *buf, unsigned long bufsz);
+static int lit_ioctl (struct io_intf *io, int cmd, void * arg);
 
 static void iovprintf_putc(char c, void * aux);
 
@@ -69,11 +72,133 @@ long iowrite(struct io_intf * io, const void * buf, unsigned long n) {
 //           It should set up all fields within the io_lit struct so that I/O operations can be performed on the io_lit
 //           through the io_intf interface. This function should return a pointer to an io_intf object that can be used 
 //           to perform I/O operations on the device.
+
+/**
+ * iolit_init - Initialize a memory backed I/O Interface.
+ * 
+ * @lit: Pointer to the io_lit struct to initialize
+ * @buf: Pointer to the memory buffer that will be used as the I/O source.
+ * @size: Size of memory buffer in bytes.
+ * 
+ * This function sets up an 'io_lit' struct, which treats a block of memory as an I/O device.
+ * After calling this function, the resulting 'io_intf' can be used to read from or write to
+ * the specified memory buffer.
+ * 
+ * Returns: 
+ *      Pointer to the initialized io_intf if successful.
+ */
 struct io_intf * iolit_init (
     struct io_lit * lit, void * buf, size_t size)
 {
     //           Implement me!
+    static const struct io_ops ops = {
+        .close = NULL, // Never using this
+        .read = lit_read,
+        .write = lit_write,
+        .ctl = lit_ioctl
+    };
+
+    lit->io_intf.ops = &ops;
+    lit->buf = buf;
+    lit->size = size;
+    lit->pos = 0;
+
     return &lit->io_intf;
+}
+
+/**
+ * lit_read - Read data from the memory-backed I/O buffer.
+ * 
+ * @io: Pointer to the I/O interface(io_intf) for reading data
+ * @buf: Buffer where the data read from the io_lit buffer will be stored.
+ * @bufsz: Max number of bytes to read.
+ * 
+ * This function reads up to 'bufsz' bytes, from a memory-backed I/O interface into 'buf',
+ * starting from the current position in the 'io_lit' buffer. The function ensures that it
+ * does not read beyond the bounds of the memory buffer.
+ * 
+ * Returns:
+ *      Number of bytes read on success
+ *      0 if the end of the buffer is reached
+ */
+static long lit_read (struct io_intf *io, void *buf, unsigned long bufsz){
+    struct io_lit *const lit = ((void*) io - offsetof(struct io_lit,io_intf));
+    if(lit->pos >= lit->size) return 0; // no space left
+     // Calculate how much data we can actually read
+    unsigned long remaining = lit->size - lit->pos;
+    unsigned long to_read = (bufsz < remaining) ? bufsz : remaining;
+
+    // Copy the data from the buffer
+    memcpy(buf, (char*)lit->buf + lit->pos, to_read);
+
+    // Return the number of bytes read
+    return to_read;
+}
+
+
+/**
+ * lit_write - Write data to the memory-backed I/O buffer.
+ *
+ * @io: Pointer to the I/O interface (io_intf) for writing data.
+ * @buf: Buffer containing the data to write to the io_lit buffer.
+ * @bufsz: Number of bytes to write.
+ *
+ * This function writes up to `bufsz` bytes from `buf` into the memory-backed I/O interface,
+ * starting from the current position in the `io_lit` buffer. It ensures that it does not write
+ * beyond the bounds of the memory buffer.
+ *
+ * Returns:
+ *      Number of bytes written on success
+ *      0 if there is no space left to write
+ */
+static long lit_write (struct io_intf *io, const void *buf, unsigned long bufsz){
+    struct io_lit *const lit = (void *)io - offsetof(struct io_lit, io_intf);
+    if (lit->pos >= lit->size) return 0;
+
+    // Calculate how much data we can actually write
+    unsigned long remaining = lit->size - lit->pos;
+    unsigned long to_write = (bufsz < remaining) ? bufsz : remaining;
+
+    // Copy the data to the buffer
+    memcpy((char*)lit->buf + lit->pos, buf, to_write);
+
+    // Return the number of bytes written
+    return to_write;
+}
+
+/**
+ * lit_ioctl - Perform control operations on the memory-backed I/O interface.
+ *
+ * @io: Pointer to the I/O interface (io_intf) to operate on.
+ * @cmd: Control command to execute. Supported commands are IOCTL_GETLEN, IOCTL_GETPOS, and IOCTL_SETPOS.
+ * @arg: Argument for the control command, usually a pointer to a uint64_t to store or set position/size.
+ *
+ * This function provides support for controlling the `io_lit` interface with commands to
+ * get the buffer length, get the current position, or set a new position. The `IOCTL_GETLEN`
+ * command retrieves the total size of the buffer, `IOCTL_GETPOS` retrieves the current read/write
+ * position, and `IOCTL_SETPOS` sets a new read/write position within the buffer boundaries.
+ *
+ * Returns:
+ *      0 on success
+ *     -1 if the requested position is out of bounds
+ *     -ENOTSUP if the command is unsupported
+ */
+static int lit_ioctl (struct io_intf *io, int cmd, void * arg) {
+    struct io_lit * const lit = (void *)io - offsetof(struct io_lit, io_intf);
+    switch (cmd) {
+        case IOCTL_GETLEN:
+            *(uint64_t *)arg = lit->size;
+            return 0;
+        case IOCTL_GETPOS:
+            *(uint64_t *)arg = lit->pos;
+            return 0;
+        case IOCTL_SETPOS:
+            if (*(uint64_t *)arg > lit->size) return -1; // Out of bounds
+            lit->pos = *(uint64_t *)arg;
+            return 0;
+        default:
+            return -ENOTSUP; // Unsupported operation
+    }
 }
 
 //           I/O term provides three features:
