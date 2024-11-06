@@ -2,6 +2,7 @@
 #include "io.h"
 #include <stdint.h>
 #include <string.h> 
+#include "console.h"
 
 int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
     Elf64_Ehdr elf_header;
@@ -18,6 +19,10 @@ int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
     // 2. Verify ELF type and architecture for 64-bit RISC-V
     if (elf_header.e_type != 2 || elf_header.e_machine != RV64_MACHINE){
         return -3; // Unsupported ELF type or machine
+    }
+
+    if(elf_header.e_ident[5] != ELFDATA2LSB){
+        return -9; // NOT Little-Endian
     }
 
     // 3. Parse and load each program header
@@ -59,6 +64,8 @@ int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
 
     // 4. Set the entry point function pointer
     *entryptr = (void (*)(struct io_intf *io))elf_header.e_entry;
+
+    console_printf("\n Entryptr: %p", (void*)*entryptr);
 
     return 0; // Success
 }

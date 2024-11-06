@@ -15,6 +15,8 @@
 #define PT_LOAD     1  // Program header type for loadable segments
 
 #define RV64_MACHINE 243
+#define ELFDATA2LSB 1
+#define ELFDATA2MSB 2
 
 // Validate that file is in ELF format
 #define ELF_MAGIC_OK(ehdr) ((ehdr).e_ident[0] == ELFMAG0 && \

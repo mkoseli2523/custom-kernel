@@ -23,6 +23,9 @@ static void ioterm_close(struct io_intf * io);
 static long ioterm_read(struct io_intf * io, void * buf, size_t len);
 static long ioterm_write(struct io_intf * io, const void * buf, size_t len);
 static int ioterm_ioctl(struct io_intf * io, int cmd, void * arg);
+static long lit_read (struct io_intf *io, void *buf, unsigned long bufsz);
+static long lit_write (struct io_intf *io, const void *buf, unsigned long bufsz);
+static int lit_ioctl (struct io_intf *io, int cmd, void * arg);
 
 static void iovprintf_putc(char c, void * aux);
 
@@ -73,7 +76,66 @@ struct io_intf * iolit_init (
     struct io_lit * lit, void * buf, size_t size)
 {
     //           Implement me!
+    static const struct io_ops ops = {
+        .close = NULL, // Never using this
+        .read = lit_read,
+        .write = lit_write,
+        .ctl = lit_ioctl
+    };
+
+    lit->io_intf.ops = &ops;
+    lit->buf = buf;
+    lit->size = size;
+    lit->pos = 0;
+
     return &lit->io_intf;
+}
+
+static long lit_read (struct io_intf *io, void *buf, unsigned long bufsz){
+    struct io_lit *const lit = ((void*) io - offsetof(struct io_lit,io_intf));
+    if(lit->pos >= lit->size) return 0; // no space left
+     // Calculate how much data we can actually read
+    unsigned long remaining = lit->size - lit->pos;
+    unsigned long to_read = (bufsz < remaining) ? bufsz : remaining;
+
+    // Copy the data from the buffer
+    memcpy(buf, (char*)lit->buf + lit->pos, to_read);
+
+    // Return the number of bytes read
+    return to_read;
+}
+
+static long lit_write (struct io_intf *io, const void *buf, unsigned long bufsz){
+    struct io_lit *const lit = (void *)io - offsetof(struct io_lit, io_intf);
+    if (lit->pos >= lit->size) return 0;
+
+    // Calculate how much data we can actually write
+    unsigned long remaining = lit->size - lit->pos;
+    unsigned long to_write = (bufsz < remaining) ? bufsz : remaining;
+
+    // Copy the data to the buffer
+    memcpy((char*)lit->buf + lit->pos, buf, to_write);
+
+    // Return the number of bytes written
+    return to_write;
+}
+
+static int lit_ioctl (struct io_intf *io, int cmd, void * arg) {
+    struct io_lit * const lit = (void *)io - offsetof(struct io_lit, io_intf);
+    switch (cmd) {
+        case IOCTL_GETLEN:
+            *(uint64_t *)arg = lit->size;
+            return 0;
+        case IOCTL_GETPOS:
+            *(uint64_t *)arg = lit->pos;
+            return 0;
+        case IOCTL_SETPOS:
+            if (*(uint64_t *)arg > lit->size) return -1; // Out of bounds
+            lit->pos = *(uint64_t *)arg;
+            return 0;
+        default:
+            return -ENOTSUP; // Unsupported operation
+    }
 }
 
 //           I/O term provides three features:
