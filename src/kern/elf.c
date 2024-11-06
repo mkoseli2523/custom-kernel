@@ -102,7 +102,7 @@ int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
     // 4. Set the entry point function pointer
     *entryptr = (void (*)(struct io_intf *io))elf_header.e_entry;
 
-    console_printf("\n Entryptr: %p", (void*)*entryptr);
+    console_printf("\nEntryptr: %p \n", (void*)*entryptr);
 
     return 0; // Success
 }
