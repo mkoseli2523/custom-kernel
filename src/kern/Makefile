@@ -24,7 +24,8 @@ CORE_OBJS = \
 	plic.o \
 	thrasm.o \
 	uart.o \
-	ezheap.o
+	ezheap.o \
+	elf.o
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -mcmodel=medany -fno-pie -no-pie -march=rv64g -mabi=lp64d
