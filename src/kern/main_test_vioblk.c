@@ -117,7 +117,7 @@ void test_vioblk_write(struct io_intf *blkio) {
     // print the data written to the terminal
     kprintf("Data written to the device:\n");
     for (unsigned long i = 0; i < data_len; i++) {
-        kprintf("%d", data[i]);
+        kprintf("0x%x ", data[i]);
 
         if (i % 512 == 511) {
             kprintf("\n\n");
@@ -161,7 +161,7 @@ void test_vioblk_read(struct io_intf *blkio) {
     // print the data read from the device to the terminal
     kprintf("Data read from the device:\n");
     for (long i = 0; i < bytes_read; i++) {
-        kprintf("%d", buffer[i]);
+        kprintf("0x%x ", buffer[i]);
 
         if (i % 512 == 511) {
             kprintf("\n\n");
