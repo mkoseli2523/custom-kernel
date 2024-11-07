@@ -17,8 +17,13 @@ CORE_OBJS = \
 	device.o \
 	virtio.o \
 	vioblk.o \
-	console.o
-	# Add the names of new objects here
+	console.o \
+	thread.o \
+	timer.o \
+	plic.o \
+	thrasm.o \
+	uart.o \
+	ezheap.o
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -mcmodel=medany -fno-pie -no-pie -march=rv64g -mabi=lp64d
@@ -52,6 +57,15 @@ debug-shell: shell.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 # You might want to add more here
+
+test_vioblk.elf: $(CORE_OBJS) main_test_vioblk.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_vioblk: test_vioblk.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_vioblk: test_vioblk.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 clean:
 	if [ -f companion.o ]; then cp companion.o companion.o.save; fi
