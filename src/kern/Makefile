@@ -17,7 +17,14 @@ CORE_OBJS = \
 	device.o \
 	virtio.o \
 	vioblk.o \
-	console.o
+	console.o \
+	thread.o \
+	timer.o \
+	elf.o \
+	plic.o \
+	uart.o \
+	ezheap.o \
+	thrasm.o
 	# Add the names of new objects here
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
@@ -29,8 +36,8 @@ CFLAGS += -I. # -DDEBUG -DTRACE
 QEMUOPTS = -global virtio-mmio.force-legacy=false
 QEMUOPTS += -machine virt -bios none -kernel $< -m 8M -nographic
 QEMUOPTS += -serial mon:stdio
-QEMUOPTS += -drive file=kfs.raw,id=blk0,if=none,format=raw
-QEMUOPTS += -device virtio-blk-device,drive=blk0
+# QEMUOPTS += -drive file=kfs.raw,id=blk0,if=none,format=raw
+# QEMUOPTS += -device virtio-blk-device,drive=blk0
 QEMUOPTS += -serial pty
 
 # try to generate a unique GDB port
@@ -52,6 +59,14 @@ debug-shell: shell.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 # You might want to add more here
+test_elf_loader.elf: $(CORE_OBJS) test_elf_loader.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_elf_loader: test_elf_loader.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_elf_loader: test_elf_loader.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 clean:
 	if [ -f companion.o ]; then cp companion.o companion.o.save; fi
@@ -61,4 +76,5 @@ clean:
 companion.o:
 	if [ -f ../user/trek ]; then sh ./mkcomp.sh ../user/trek; fi
 	if ! [ -f ../user/trek ]; then sh ./mkcomp.sh; fi
+
 
