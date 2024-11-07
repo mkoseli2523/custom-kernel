@@ -1,3 +1,4 @@
+
 TOOLPREFIX=riscv64-unknown-elf-
 QEMU=qemu-system-riscv64
 
@@ -20,6 +21,10 @@ CORE_OBJS = \
 	console.o \
 	thread.o \
 	timer.o \
+	plic.o \
+	thrasm.o \
+	uart.o \
+	ezheap.o
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -mcmodel=medany -fno-pie -no-pie -march=rv64g -mabi=lp64d
@@ -30,8 +35,8 @@ CFLAGS += -I. # -DDEBUG -DTRACE
 QEMUOPTS = -global virtio-mmio.force-legacy=false
 QEMUOPTS += -machine virt -bios none -kernel $< -m 8M -nographic
 QEMUOPTS += -serial mon:stdio
-# QEMUOPTS += -drive file=kfs.raw,id=blk0,if=none,format=raw
-# QEMUOPTS += -device virtio-blk-device,drive=blk0
+QEMUOPTS += -drive file=kfs.raw,id=blk0,if=none,format=raw
+QEMUOPTS += -device virtio-blk-device,drive=blk0
 QEMUOPTS += -serial pty
 
 # try to generate a unique GDB port
@@ -61,7 +66,7 @@ run-test_elf_loader: test_elf_loader.elf
 
 debug-test_elf_loader: test_elf_loader.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
-
+	
 test_vioblk.elf: $(CORE_OBJS) main_test_vioblk.o companion.o
 	$(LD) -T kernel.ld -o $@ $^
 
@@ -79,5 +84,3 @@ clean:
 companion.o:
 	if [ -f ../user/trek ]; then sh ./mkcomp.sh ../user/trek; fi
 	if ! [ -f ../user/trek ]; then sh ./mkcomp.sh; fi
-
-
