@@ -25,7 +25,8 @@ CORE_OBJS = \
 	thrasm.o \
 	uart.o \
 	ezheap.o \
-	elf.o
+	elf.o \
+	kfs.o
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -mcmodel=medany -fno-pie -no-pie -march=rv64g -mabi=lp64d
@@ -76,6 +77,13 @@ run-test_vioblk: test_vioblk.elf
 
 debug-test_vioblk: test_vioblk.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+# fs test
+test_fs.elf: $(CORE_OBJS) test.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_fs: test_fs.elf
+	$(QEMU) $(QEMUOPTS)
 
 clean:
 	if [ -f companion.o ]; then cp companion.o companion.o.save; fi
