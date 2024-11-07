@@ -20,12 +20,6 @@ CORE_OBJS = \
 	console.o \
 	thread.o \
 	timer.o \
-	elf.o \
-	plic.o \
-	uart.o \
-	ezheap.o \
-	thrasm.o
-	# Add the names of new objects here
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -mcmodel=medany -fno-pie -no-pie -march=rv64g -mabi=lp64d
@@ -66,6 +60,15 @@ run-test_elf_loader: test_elf_loader.elf
 	$(QEMU) $(QEMUOPTS)
 
 debug-test_elf_loader: test_elf_loader.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+test_vioblk.elf: $(CORE_OBJS) main_test_vioblk.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_vioblk: test_vioblk.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_vioblk: test_vioblk.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 clean:

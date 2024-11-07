@@ -107,6 +107,5 @@ int device_open (
 		debug("%s%d is device %d", name, instno, devno);
 
 	//           Call driver's open function
-
 	return devtab[devno].openfn(ioptr, devtab[devno].aux);
 }
