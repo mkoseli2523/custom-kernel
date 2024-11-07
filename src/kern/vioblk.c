@@ -468,6 +468,8 @@ long vioblk_write (
         dev->pos += 512; 
         total_written += 512;
     }
+
+    return total_written;
 }
 
 int vioblk_ioctl(struct io_intf * restrict io, int cmd, void * restrict arg) {

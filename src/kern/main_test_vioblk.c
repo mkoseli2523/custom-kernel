@@ -26,6 +26,7 @@ extern char _kimg_end[];
 
 void test_vioblk_read(struct io_intf *blkio);
 void test_vioblk_write(struct io_intf *blkio);
+void test_ioctl(struct io_intf *blkio);
 
 void main(void) {
     struct io_intf *blkio;
@@ -67,6 +68,7 @@ void main(void) {
     // perform read and write tests
     test_vioblk_write(blkio);
     test_vioblk_read(blkio);
+    test_ioctl(blkio);
     // int tid1 = thread_spawn("writer_thread", (void*)test_vioblk_write, blkio);
     // int tid2 = thread_spawn("reader_thread", (void*)test_vioblk_read, blkio);
 
@@ -189,4 +191,42 @@ void test_vioblk_read(struct io_intf *blkio) {
 
     kfree(buffer);
     kfree(expected_data);
+}
+
+void test_ioctl(struct io_intf *blkio) {
+    int result, position;
+    position = 0;
+
+    // set position
+    result = blkio->ops->ctl(blkio, IOCTL_SETPOS, &position);
+    if (result != 0) {
+        kprintf("Error setting position: %d\n", result);
+        return;
+    }
+
+    kprintf("set position to: %d\n", position);
+
+    int get_length, get_pos, get_blksz;
+
+    // get length
+    result = blkio->ops->ctl(blkio, IOCTL_GETLEN, &get_length);
+    if (result != 0) {
+        kprintf("Error getting length: %d\n", result);
+        return;
+    }
+
+    // get position
+    result = blkio->ops->ctl(blkio, IOCTL_GETPOS, &get_pos);
+    if (result != 0) {
+        kprintf("Error getting position: %d\n", result);
+        return;
+    }
+
+    // get blocksize
+    result = blkio->ops->ctl(blkio, IOCTL_GETBLKSZ, &get_blksz); 
+    if (result != 0) {
+        kprintf("Error getting blocksize: %d\n", result);
+    }
+
+    kprintf("get length: %d\nget position: %d\nget blocksize: %d\n", get_length, get_pos, get_blksz);
 }
