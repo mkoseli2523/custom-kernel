@@ -194,7 +194,7 @@ void test_vioblk_read(struct io_intf *blkio) {
 }
 
 void test_ioctl(struct io_intf *blkio) {
-    int result, position;
+    uint64_t result, position;
     position = 0;
 
     // set position
@@ -206,7 +206,7 @@ void test_ioctl(struct io_intf *blkio) {
 
     kprintf("set position to: %d\n", position);
 
-    int get_length, get_pos, get_blksz;
+    uint64_t get_length, get_pos, get_blksz;
 
     // get length
     result = blkio->ops->ctl(blkio, IOCTL_GETLEN, &get_length);
