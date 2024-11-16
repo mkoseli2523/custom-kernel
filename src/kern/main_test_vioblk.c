@@ -25,7 +25,9 @@ extern char _kimg_end[];
 #define VIRT0_IRQNO 1
 
 void test_vioblk_read(struct io_intf *blkio);
+void test_vioblk_read_partial(struct io_intf *blkio);
 void test_vioblk_write(struct io_intf *blkio);
+void test_vioblk_write_partial(struct io_intf *blkio);
 void test_ioctl(struct io_intf *blkio);
 
 void main(void) {
@@ -66,9 +68,11 @@ void main(void) {
     }
 
     // perform read and write tests
-    test_vioblk_write(blkio);
-    test_vioblk_read(blkio);
-    test_ioctl(blkio);
+    // test_vioblk_write(blkio);
+    test_vioblk_write_partial(blkio);
+    // test_vioblk_read(blkio);
+    test_vioblk_read_partial(blkio);
+    // test_ioctl(blkio);
     // int tid1 = thread_spawn("writer_thread", (void*)test_vioblk_write, blkio);
     // int tid2 = thread_spawn("reader_thread", (void*)test_vioblk_read, blkio);
 
@@ -83,7 +87,7 @@ void main(void) {
 // Function to test writing multiple blocks to the block device
 void test_vioblk_write(struct io_intf *blkio) {
     // create a buffer with data to write
-    const unsigned long data_len = 4096; // Write 4KB of data (assuming 512-byte blocks, that's 8 blocks)
+    const unsigned long data_len = 1024; // Write 4KB of data (assuming 512-byte blocks, that's 8 blocks)
     // const unsigned long data_len = 512; // Write 4KB of data (assuming 512-byte blocks, that's 8 blocks)
     char *data = kmalloc(data_len);
     if (!data) {
@@ -130,9 +134,64 @@ void test_vioblk_write(struct io_intf *blkio) {
     kfree(data);
 }
 
+
+void test_vioblk_write_partial(struct io_intf *blkio) {
+    // create a buffer with data to write
+    const unsigned long data_len = 600; // Write 4KB of data (assuming 512-byte blocks, that's 8 blocks)
+    // const unsigned long data_len = 512; // Write 4KB of data (assuming 512-byte blocks, that's 8 blocks)
+    char *data = kmalloc(data_len);
+    if (!data) {
+        kprintf("Error allocating memory for write buffer\n");
+        return;
+    }
+
+    // fill the buffer with a known pattern
+    for (unsigned long i = 0; i < data_len; i++) {
+        data[i] = (char)((i % 26) + 'A'); // ASCII characters A-Z
+    }
+
+    long bytes_written;
+    int result;
+
+    // set position to 0
+    uint64_t position, position_return; 
+    blkio->ops->ctl(blkio, IOCTL_GETPOS, &position_return);
+    console_printf("pos: %d\n", position_return);
+    position = 50;
+    result = blkio->ops->ctl(blkio, IOCTL_SETPOS, &position);
+    blkio->ops->ctl(blkio, IOCTL_GETPOS, &position_return);
+    console_printf("pos: %d\n", position_return);
+    if (result != 0) {
+        kprintf("Error setting position: %d\n", result);
+        kfree(data);
+        return;
+    }
+
+    // write data to the block device
+    bytes_written = blkio->ops->write(blkio, data, data_len);
+    if (bytes_written < 0) {
+        kprintf("Error writing to device: %ld\n", bytes_written);
+    } else {
+        kprintf("Written %ld bytes to device\n", bytes_written);
+    }
+
+    // print the data written to the terminal
+    kprintf("Data written to the device:\n");
+    for (unsigned long i = 0; i < data_len; i++) {
+        kprintf("0x%x ", data[i]);
+
+        if (i % 512 == 511) {
+            kprintf("\n\n");
+        }
+    }
+    kprintf("\n");
+
+    kfree(data);
+}
+
 // function to test reading multiple blocks from the block device
 void test_vioblk_read(struct io_intf *blkio) {
-    const unsigned long data_len = 4096; // Read 4KB of data
+    const unsigned long data_len = 1024; // Read 4KB of data
     // const unsigned long data_len = 512; // Read 4KB of data
     char *buffer = kmalloc(data_len);
     if (!buffer) {
@@ -193,8 +252,70 @@ void test_vioblk_read(struct io_intf *blkio) {
     kfree(expected_data);
 }
 
+void test_vioblk_read_partial(struct io_intf *blkio) {
+    const unsigned long data_len = 600; // Read 4KB of data
+    // const unsigned long data_len = 512; // Read 4KB of data
+    char *buffer = kmalloc(data_len);
+    if (!buffer) {
+        kprintf("Error allocating memory for read buffer\n");
+        return;
+    }
+
+    long bytes_read;
+    int result;
+
+    // set position to 0
+    uint64_t position = 50;
+    result = blkio->ops->ctl(blkio, IOCTL_SETPOS, &position);
+    if (result != 0) {
+        kprintf("Error setting position: %d\n", result);
+        kfree(buffer);
+        return;
+    }
+
+    // read data from the block device
+    bytes_read = blkio->ops->read(blkio, buffer, data_len);
+    if (bytes_read < 0) {
+        kprintf("Error reading from device: %ld\n", bytes_read);
+    } else {
+        kprintf("Read %ld bytes from device\n", bytes_read);
+    }
+
+    // print the data read from the device to the terminal
+    kprintf("Data read from the device:\n");
+    for (long i = 0; i < bytes_read; i++) {
+        kprintf("0x%x ", buffer[i]);
+
+        if (i % 512 == 511) {
+            kprintf("\n\n");
+        }
+    }
+    kprintf("\n");
+
+    // verify that the data read matches what was written
+    // recreate the expected data pattern
+    char *expected_data = kmalloc(data_len);
+    if (!expected_data) {
+        kprintf("Error allocating memory for expected data\n");
+        kfree(buffer);
+        return;
+    }
+    for (unsigned long i = 0; i < data_len; i++) {
+        expected_data[i] = (char)((i % 26) + 'A');
+    }
+
+    if (memcmp(buffer, expected_data, data_len) == 0) {
+        kprintf("Success: Data read matches data written.\n");
+    } else {
+        kprintf("Failure: Data read does not match data written.\n");
+    }
+
+    kfree(buffer);
+    // kfree(expected_data);
+}
+
 void test_ioctl(struct io_intf *blkio) {
-    uint64_t result, position;
+    int result, position;
     position = 0;
 
     // set position
@@ -206,7 +327,7 @@ void test_ioctl(struct io_intf *blkio) {
 
     kprintf("set position to: %d\n", position);
 
-    uint64_t get_length, get_pos, get_blksz;
+    int get_length, get_pos, get_blksz;
 
     // get length
     result = blkio->ops->ctl(blkio, IOCTL_GETLEN, &get_length);

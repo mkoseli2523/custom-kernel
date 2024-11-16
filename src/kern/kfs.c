@@ -1,357 +1,471 @@
-//		kfs.c - Kernel File System Interface
+// kfs.c 
 //
 
-#include "fs.h"
 #include "io.h"
-//#include "vioblk.c"
-// #include "../util/mkfs.c" // might need to change this later if compilation issues occur - defintely need to change it
-			  // read a post saying we dont need to include mkfs.c
-			  // do I just copy all the structs over then?
-			  // how to use iolit - dont need iolit
-			  // how to interact via vioblk - dont need to interact with vioblk
-// go through all the code writing all 0he important key information right
-
-
-#include "kfs.h"
+#include "fs.h"
+#include "device.h"
+#include "string.h"
+#include "halt.h"
 #include "error.h"
-#include <string.h>
-#include "console.h"
 
-char fs_initialized;
-struct io_intf * vioblk_io;
+// constant definitions
+#define FS_BLKSZ      4096
+#define FS_NAMELEN    32
+#define FS_MAXOPEN    32
 
-// defining the io_ops for the file system
-struct io_ops file_io_ops = {
+// internal type definitions
+// Disk layout:
+// [ boot block | inodes | data blocks ]
+
+typedef struct dentry_t{
+    char file_name[FS_NAMELEN];
+    uint32_t inode;
+    uint8_t reserved[28];
+}__attribute((packed)) dentry_t; 
+
+typedef struct boot_block_t{
+    uint32_t num_dentry;
+    uint32_t num_inodes;
+    uint32_t num_data;
+    uint8_t reserved[52];
+    dentry_t dir_entries[63];
+}__attribute((packed)) boot_block_t;
+
+typedef struct inode_t{
+    uint32_t byte_len;
+    uint32_t data_block_num[1023];
+}__attribute((packed)) inode_t;
+
+typedef struct data_block_t{
+    uint8_t data[FS_BLKSZ];
+}__attribute((packed)) data_block_t;
+
+// file struct. see 7.2 in cp1 docs
+
+struct file_struct {
+    struct io_intf io;
+    uint64_t file_position;
+    uint64_t file_size;
+    uint64_t inode_number;
+    uint64_t flags;  
+};
+
+// internal function definitions
+int fs_mount(struct io_intf* blkio);
+int fs_open(const char* name, struct io_intf** ioptr);
+void fs_close(struct io_intf* io);
+long fs_write(struct io_intf* io, const void* buf, unsigned long n);
+long fs_read(struct io_intf* io, void* buf, unsigned long n);
+int fs_ioctl(struct io_intf* io, int cmd, void* arg);
+int fs_getlen(struct file_struct* fd, void* arg);
+int fs_getpos(struct file_struct* fd, void* arg);
+int fs_setpos(struct file_struct* fd, void* arg);
+int fs_getblksz(struct file_struct* fd, void* arg);
+
+// struct that contains the pointers to our fs functions
+static const struct io_ops fs_io_ops = {
     .close = fs_close,
     .read = fs_read,
     .write = fs_write,
-    .ctl = fs_ioctl,
-}; 
+    .ctl = fs_ioctl
+};
 
-// making file struct array
-struct file_struct array_file_structs[32];
-
-// boot block global var
+// global variables
+struct io_intf * vioblk_io;
+char fs_initialized; 
 struct boot_block_t boot_block;
+struct file_struct file_structs[FS_MAXOPEN];
+inode_t inode;
 
-// this function is used for mounting and initializing the file system for future use
-// blkio io is the pointer to the block we want to copy the vioblk and the boot_block from
-int fs_mount(struct io_intf * blkio) {
+
+// int fs_mount(struct io_intf * blkio);
+//
+// sets up the file system for future fs_open operations. Takes in an argument
+// of type io_intf * that points to the filesystem provider, sets up the file system
+// and returns whether the function was successful (0) or unsuccessfull (error code) 
+
+int fs_mount(struct io_intf* blkio) {
+    // store the block device interface
     vioblk_io = blkio;
-    console_printf("Entering fs_mount function\n");
-    // check if initialized
+
+    // check if fs has already been initialized
     if (fs_initialized) {
-        console_printf("Filesystem already initialized\n");
-        return -1;
-    }
-    struct boot_block_t *boot_block_pointer = &boot_block;
-    console_printf("boot_block_pointer assigned, attempting to read boot block\n");
-
-    // copy over to the boot block gloabl var
-    long return_from_read = ioread(blkio, (void *)boot_block_pointer, sizeof(struct boot_block_t)); // might need to change size to 4096
-    console_printf("Return from ioread: %ld\n", return_from_read);
-    //check
-    if (return_from_read < 0) {
-        console_printf("Error: Failed to read boot block\n");
+        console_printf("fs_is already initialized\n");
         return -1;
     }
 
-    console_printf("Boot block read successfully\n");
-    console_printf("Number of inodes: %u, Number of data blocks: %u\n", boot_block.num_inodes, boot_block.num_data);
-    // checks
-    if (boot_block.num_inodes == 0 || boot_block.num_data == 0) {
-        console_printf("Error: Invalid boot block data (inodes or data blocks are zero)\n");
-        return -1; // Invalid boot block data
+    // set position to the beginning of io device
+    uint64_t offset = 0;
+    if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &offset) != 0) {
+        console_printf("issue setting block device offset to 0\n");
+        return -1;
     }
 
+    // attempt to read bootblock
+    if (ioread(blkio, (void *)&boot_block, FS_BLKSZ) < 0) {
+        console_printf("error: failed to read bootblock\n");
+        return -1;
+    }
+
+    console_printf("boot block read successfully, inodes: %u, data blocks: %u\n", boot_block.num_inodes, boot_block.num_data);
+
+    // mark fs as initialized
     fs_initialized = 1;
-    console_printf("Filesystem mounted successfully, fs_initialized set to 1\n");
-
+    
+    // init file structs array
+    memset(file_structs, 0, sizeof(file_structs));
     return 0;
 }
 
-// opens a file - Takes the name of the file to be opened and modifies the given pointer to contain the io_intf of the file
-// ioptr is the pointer to the iointf and name is what we are trying to match with
-int fs_open(const char * name, struct io_intf ** ioptr) {
-    console_printf("Entering fs_open with file name: %s\n", name);
-    // checks
-    if (fs_initialized != 1) {
-        console_printf("Filesystem not initialized.\n");
+
+
+// int fs_open(const char* name, struct io_intf** io);
+//
+// takes the name of the file to be opened and modifies the given pointer to contain the io_intf
+// of the file. this function also associates a specific file struct with the file and 
+// marks it as in-use. the user program will use io_intf to interact with the file 
+
+int fs_open(const char* name, struct io_intf** ioptr) {
+    // check if file system is initialized before calling open
+    if (!fs_initialized) {
+        console_printf("filesystem not initialized\n");
         return -1;
     }
 
-    // Define new file
-    struct file_struct *file = NULL;
-    for (int i = 0; i < 32; i++) {
-        if (array_file_structs[i].flags == 0) {
-            file = &array_file_structs[i];
-            console_printf("Found available file slot at index %d.\n", i);
+    // new file
+    struct file_struct * file = NULL;
+
+    for (int i = 0; i < FS_MAXOPEN; i++) {
+        if (file_structs[i].flags == 0) {
+            file = &file_structs[i];
+            console_printf("found available slot at index %d\n", i);
             break;
         }
     }
-    // checks
+
+    // check if we found a valid file slot
     if (file == NULL) {
-        console_printf("No available file slots.\n");
-        return -1;  // No available file slots
+        console_printf("no available file slots\n");
+        return -1;
     }
 
-    // Find dentry
-    struct dentry_t *dentry = NULL;
+    // search for file in directory entries
+    struct dentry_t * dentry = NULL;
+    
     for (int i = 0; i < boot_block.num_dentry; i++) {
-        console_printf("Checking dentry index %d with file name: %s\n", i, boot_block.dir_entries[i].file_name);
-        if (strncmp(boot_block.dir_entries[i].file_name, name, 32) == 0) {
+        // ensure file name is null terminated
+        char fname[FS_NAMELEN + 1];
+        strncpy(fname, boot_block.dir_entries[i].file_name, FS_NAMELEN);
+        fname[FS_NAMELEN] = '\0';
+
+        // compare the provided name with the directory entry
+        if (strncmp(name, fname, FS_NAMELEN) == 0) {
             dentry = &boot_block.dir_entries[i];
-            console_printf("File found in directory entries at index %d.\n", i);
             break;
         }
     }
-    if (dentry == NULL) {
-        console_printf("File not found in directory entries.\n");
-        return -1;  // File not found
+
+    if (!dentry) {
+        console_printf("file not found in directory entries\n");
+        return -1;
     }
 
-    // Locate inode
-    int position_diff = (4096 + (dentry->inode * sizeof(struct inode_t)));
-    vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &position_diff); // set the position to the start of the inode
-    inode_t inode;
-    vioblk_io->ops->read(vioblk_io, &inode, sizeof(struct inode_t));
-
-    // struct inode_t *cur_inode = (struct inode_t*)((char*)&boot_block + 4096 + dentry->inode * sizeof(struct inode_t));
-    console_printf("Inode located. Inode number: %d, File size: %d bytes\n", dentry->inode, inode.byte_len);
-
-    // Initialize file structure
+    // set file position
     file->file_position = 0;
+    file->inode_number = dentry->inode;
+
+    // set position to inode start
+    uint64_t inode_pos = FS_BLKSZ + file->inode_number * FS_BLKSZ;
+    if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_pos) != 0) {
+        console_printf("can't set file position\n");
+        return -1;
+    }
+
+    // read inode data
+    uint64_t bytes_read = vioblk_io->ops->read(vioblk_io, &inode, sizeof(struct inode_t));
+    if (bytes_read != sizeof(struct inode_t)) {
+        console_printf("can't read inode\n");
+        return -1;
+    }
+
+    // initialize file structure with inode data
     file->file_size = inode.byte_len;
-    file->inode_num = dentry->inode;
-    file->flags = 1;
-    file->io.ops = &file_io_ops;
+    file->flags = 1;                        // mark file as in use
+    file->io.ops = &fs_io_ops;
     *ioptr = &file->io;
-
-    console_printf("File opened successfully. File position: %d, File size: %d, Inode number: %d\n", file->file_position, file->file_size, file->inode_num);
+    
+    // succesfully opened file return 0
+    console_printf("file opened successfully. file position: %d file size: %d inode number: %d\n", 
+                                    file->file_position, file->file_size, file->inode_number);
     return 0;
 }
 
 
 
-// closes file in use
-// io is the io_intf pointer for the file we are trying to close
-void fs_close(struct io_intf* io){
-    for(int i = 0; i < 32; i++){
-	    if(&array_file_structs[i].io == io){
-		    array_file_structs[i].flags = 0;
-		    break;
-	    }
-    }
-}
+// void fs_close(struct intf_t * io);
+//
+// marks the file struct associated with io as unused. takes an input to the io that we want to close.
+// the function accomplishes this by going through the list of open files and marking the file as unused
+// once it is found
 
-// writes to a certain block
-// io is the pointer to file we want to write to
-// buf is where we get the data from
-// n is the amount of data we are copying over
-long fs_write(struct io_intf* io, const void* buf, unsigned long n){
-    struct file_struct *file = NULL;
-    for(int i = 0; i < 32; i++){
-            if(&array_file_structs[i].io == io){
-                    file = &array_file_structs[i]; 
-                    break;
-            }
-    }    
-    if (file == NULL || file->flags == 0){
-	    return -1;
-    }
-    //if (file->file_position + n > file->file_size) {
-      //  n = file->file_size - file->file_position; 
-    //}
-    int position_diff = (4096 + (file->inode_num * sizeof(struct inode_t)));
-    vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &position_diff); // set the position to the start of the inode
-    inode_t inode;
-    vioblk_io->ops->read(vioblk_io, &inode, sizeof(struct inode_t));
-    //struct inode_t *cur_inode = (struct inode_t*)((char*)&boot_block + 4096 + file->inode_num * sizeof(struct inode_t)); // maybe should change this to 
-															 // 4096 or size instead of 
-															 // sizeof
-    unsigned long finished_data = 0;
-    unsigned long remaining_data = n;
-    // file->file_position = 0;
-    unsigned long position_of_file = file->file_position;
-    while(remaining_data>0){
-	    unsigned long offset_from_0th_data_block = position_of_file/4096;
-	    unsigned long offset_in_block = position_of_file%4096;
-	    unsigned long bytes_to_write;
-	    //if(offset_from_0th_data_block > 1023 || offset_from_0th_data_block > cur_inode->byte_len/4096){ // not too sure about this one
-	//	   return -1;
-	  //  }
-        if(offset_from_0th_data_block > 1023){
-            return -1;
+void fs_close(struct io_intf* io) {
+    for (int i = 0; i < FS_MAXOPEN; i++) {
+        if (&file_structs[i].io == io) {
+            file_structs[i].flags = 0;
+            break;
         }
-        int data_block_position = 4096 + (boot_block.num_inodes * sizeof(struct inode_t)) + (inode.data_block_num[offset_from_0th_data_block] * 4096) + offset_in_block;
-
-        // Set the position to the start of the specified data block
-        vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_position);
-
-        // Now, read the data block into a buffer
-        // char data_block_buffer[4096];
-        // vioblk_io->ops->read(vioblk_io, data_block_buffer, 4096);
-
-	    //char *destination_block = (char*)((char*)&boot_block + 4096 + (boot_block.num_inodes * sizeof(struct inode_t)) +(cur_inode->data_block_num[offset_from_0th_data_block] * 4096));  // need to change this line
-	    if (remaining_data < 4096 - offset_in_block) {
-		    bytes_to_write = remaining_data;
-	    }
-	    else {
-		    bytes_to_write = 4096 - offset_in_block;
-	    }
-        vioblk_io->ops->write(vioblk_io, buf, 4096);
-	    // memcpy(data_block_buffer + offset_in_block, (char*)buf + finished_data, bytes_to_write);
-	    finished_data += bytes_to_write;
-	    position_of_file += bytes_to_write;
-	    remaining_data -= bytes_to_write;
-
-
     }
-    file->file_position = position_of_file;
-    if (file->file_position > file->file_size) {
-            file->file_size = file->file_position;
-    }
-    return finished_data;
 
+    return;
 }
 
 
 
-// reads from a certain block
-// io is the pointer to file we want to read from
-// buf is where we store the data to
-// n is the amount of data we are copying over
-long fs_read(struct io_intf* io, void* buf, unsigned long n){
-    struct file_struct *file = NULL;
-    for(int i = 0; i < 32; i++){
-            if(&array_file_structs[i].io == io){
-                    file = &array_file_structs[i]; 
-                    break;
-            }
-    }    
-    if (file == NULL || file->flags == 0){
-	    return -1;
+// long fs_write(struct io_intf* io, const void* buf, unsigned long n);
+//
+// writes n bytes from the buf into the file associated with io. takes in three arguments:
+// pointer to the io, pointer to buffer that contains the data to be written, and unsigned 
+// long n that shows how many bytes we are going to write. returns number of bytes written
+// if successfull otherwise returns a negative value. 
+// size of the file does not change, this function only overwrites existing data. it also does not
+// create any new files. updates metadata in the file struct as appropriate
+
+long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
+    // make sure the parameters are valid
+    if (!io || !buf) {
+        return -1;
     }
-//    if (file->file_position + n > file->file_size) {
-  //      n = file->file_size - file->file_position; 
-   // }
-    int position_diff = (4096 + (file->inode_num * sizeof(struct inode_t)));
-    vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &position_diff); // set the position to the start of the inode
+
+    // retrieve file struct from io_intf
+    struct file_struct* file = (struct file_struct*)((char*)io - offsetof(struct file_struct, io));
+
+    // ensure the file struct is valid and in use
+    if (file->flags == 0) {
+        return -2; 
+    }
+
+    // make sure the file system is initialized
+    if (!fs_initialized) {
+        return -3; 
+    }
+
+    // check if we are at the end of a file
+    if (file->file_position >= file->file_size) {
+        return 0; 
+    }
+
+    // make sure n does not exceed the number of bytes in the file
+    if (file->file_position + n > file->file_size) {
+        n = file->file_size - file->file_position;
+    }
+
+    // read the inode associated with the file
+    uint32_t inode_number = file->inode_number;
+
+    // calculate the inode's offset in the filesystem
+    uint64_t inode_offset = FS_BLKSZ + (inode_number * FS_BLKSZ);
+
+    // read the inode
     inode_t inode;
-    vioblk_io->ops->read(vioblk_io, &inode, sizeof(struct inode_t));
-    // struct inode_t *cur_inode = (struct inode_t*)((char*)&boot_block + 4096 + file->inode_num * sizeof(struct inode_t));
-    unsigned long finished_data = 0;
-    unsigned long remaining_data = n;
-    unsigned long position_of_file = file->file_position;
-    while(remaining_data>0){
-	    unsigned long offset_from_0th_data_block = position_of_file/4096;
-	    unsigned long offset_in_block = position_of_file%4096;
-	    unsigned long bytes_to_read;
+    if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_offset) != 0) {
+        return -1; // Error setting position
+    }
 
-        if(offset_from_0th_data_block > 1023){
-            return -1;
+    long bytes_read = vioblk_io->ops->read(vioblk_io, &inode, sizeof(inode_t));
+    if (bytes_read != sizeof(inode_t)) {
+        return -5; 
+    }
+
+    // initialize variables for reading the data
+    unsigned long total_bytes_written = 0;
+    unsigned long bytes_to_write = n;
+    uint64_t file_pos = file->file_position;
+    long bytes_written;
+
+    while (bytes_to_write > 0) {
+        // calculate the current data block index and the index within the block
+        uint32_t block_index = file_pos / FS_BLKSZ;
+        uint32_t block_offset = file_pos % FS_BLKSZ;
+
+        // check if block index exceeds the max number of blocks allowed
+        if (block_index >= sizeof(struct inode_t)) {
+            break;
         }
-        // Calculate the position for the data block
-        int data_block_position = 4096 + (boot_block.num_inodes * sizeof(struct inode_t)) + (inode.data_block_num[offset_from_0th_data_block] * 4096) + offset_in_block;
-        // make this a unit 64 t
-        // Set the position to the start of the specified data block
-        vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_position);
-        // ioseek
 
+        // get the data block number
+        uint32_t data_block_num = inode.data_block_num[block_index];
 
-        // Now, read the data block into a buffer
-        char data_block_buffer[4096];
-        // vioblk_io->ops->read(vioblk_io, data_block_buffer, 4096);
-        
+        // calculate the offset of the data block in the filesystem
+        uint64_t data_block_offset = FS_BLKSZ                             // boot block size
+                                   + (boot_block.num_inodes * FS_BLKSZ)   // total inode size
+                                   + (data_block_num * FS_BLKSZ)          // data block offset
+                                   + block_offset;                        // mem offset
 
-	    //char *source_block = (char*)((char*)&boot_block + 4096 + (boot_block.num_inodes * sizeof(struct inode_t)) +(cur_inode->data_block_num[offset_from_0th_data_block] * 4096));  // need to change this line 
-																						  //
-	    if (remaining_data < 4096 - offset_in_block) {
-		    bytes_to_read = remaining_data;
-	    }
-	    else {
-		    bytes_to_read = 4096 - offset_in_block;
-	    }
-        vioblk_io->ops->read(vioblk_io, buf, bytes_to_read); // changing this for now change back later
+        // write to the data block
+        data_block_t data_block;
+        if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_offset) != 0) {
+            return -6; 
+        }
 
-	    //memcpy( (char*)buf + finished_data, data_block_buffer + offset_in_block, bytes_to_read);
-	    finished_data += bytes_to_read;
-	    position_of_file += bytes_to_read;
-	    remaining_data -= bytes_to_read;
+        // calculate how many bytes we can write to this block
+        unsigned long bytes_available = FS_BLKSZ - block_offset;
+        unsigned long bytes_this_write = (bytes_to_write < bytes_available) ? bytes_to_write : bytes_available;
 
+        // copy the data to the buffer
+        memcpy(data_block.data, (char*)buf + total_bytes_written, bytes_this_write);
 
-    }
-    file->file_position = position_of_file;
-    return finished_data;
+        bytes_written = vioblk_io->ops->write(vioblk_io, &data_block, bytes_this_write);
+        if (bytes_written != bytes_this_write) {
+            return -7; 
+        }
 
-}
-
-// get length helper function 
-// fd is pointer to file struct
-// arg is where we store legnth
-int fs_getlen(struct file_struct *fd, void *arg) {
-    if (!arg) return -1; // Check if arg is a valid pointer
-
-    *(uint64_t*)arg = fd->file_size;
-    return 0;
-}
-//gets position
-// fd is the pointer to file struct
-// arg is where we store pos
-int fs_getpos(struct file_struct *fd, void *arg) {
-    if (!arg) return -1;
-
-    *(uint64_t*)arg = fd->file_position;
-    return 0;
-}
-// sets position helper function
-// fd is the pointer to file struct
-// arg is where we the value for set from
-int fs_setpos(struct file_struct *fd, void *arg) {
-    //if (!arg) return -1;
-
-    uint64_t new_pos = *(uint64_t*)arg;
-
-    // Ensure the new position is within the file size
-    if (new_pos > fd->file_size) {
-        return -1; // Invalid position
+        // update counters
+        total_bytes_written += bytes_this_write;
+        bytes_to_write -= bytes_this_write;
+        file_pos += bytes_this_write;
     }
 
-    fd->file_position = new_pos;
-    return 0;
-}
+    // update file position
+    file->file_position = file_pos;
 
-int fs_getblksz(struct file_struct *fd, void *arg) {
-    if (!arg) return -1;
-
-    *(uint32_t*)arg = 4096; // Assume 4096 as the block size
-    return 0;
+    // return the number of bytes read
+    return total_bytes_written; 
 }
 
 
 
-// the io control function with bunch of helper function
-// we go to the helped function using command
-// arg is the argument pointer
-// io is the pointer to the io_intf
-int fs_ioctl(struct io_intf *io, int cmd, void *arg){
-    // find file
-    struct file_struct *file = NULL;
-    for(int i = 0; i < 32; i++){
-            if(&array_file_structs[i].io == io){
-                    file = &array_file_structs[i]; 
-                    break;
-            }
-    }    
-    // checks
-    if (file == NULL || file->flags == 0){
-	    return -1;
+// long fs_read(struct io_intf* io, void* buf, unsigned long n)
+// 
+// reads n bytes from the file associated with io into buf. takes in 3 arguments pointer to the io,
+// pointer to the buffer that will eventually contain the read data, and the size of the memory 
+// we want to read. if successful returns 0 else returns negative value
+// updates metadata as appropriate. use fs_open to get io
+
+long fs_read(struct io_intf* io, void* buf, unsigned long n)
+{
+    // make sure the parameters are valid
+    if (!io || !buf) {
+        return -1; 
     }
-    // switches to the right helper function
-    switch (cmd) {
+
+    // retrieve file struct from io_intf
+    struct file_struct* file = (struct file_struct*)((char*)io - offsetof(struct file_struct, io));
+
+    // ensure the file struct is valid and in use
+    if (file->flags == 0) {
+        return -1; 
+    }
+
+    // make sure the file system is initialized
+    if (!fs_initialized) {
+        return -1; 
+    }
+
+    // check if we are at the end of a file
+    if (file->file_position >= file->file_size) {
+        return 0; 
+    }
+
+    // make sure n does not exceed the number of bytes in the file
+    if (file->file_position + n > file->file_size) {
+        n = file->file_size - file->file_position;
+    }
+
+    // read the inode associated with the file
+    uint32_t inode_number = file->inode_number;
+
+    // calculate the inode's offset in the filesystem
+    uint64_t inode_offset = FS_BLKSZ + (inode_number * FS_BLKSZ);
+
+    // read the inode
+    inode_t inode;
+    if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_offset) != 0) {
+        return -1; // Error setting position
+    }
+
+    long bytes_read = vioblk_io->ops->read(vioblk_io, &inode, sizeof(inode_t));
+    if (bytes_read != sizeof(inode_t)) {
+        return -1; 
+    }
+
+    // initialize variables for reading the data
+    unsigned long total_bytes_read = 0;
+    unsigned long bytes_to_read = n;
+    uint64_t file_pos = file->file_position;
+
+    while (bytes_to_read > 0) {
+        // calculate the current data block index and the index within the block
+        uint32_t block_index = file_pos / FS_BLKSZ;
+        uint32_t block_offset = file_pos % FS_BLKSZ;
+
+        // check if block index exceeds the max number of blocks allowed
+        if (block_index >= sizeof(struct inode_t)) {
+            break;
+        }
+
+        // get the data block number
+        uint32_t data_block_num = inode.data_block_num[block_index];
+
+        // calculate the offset of the data block in the filesystem
+        uint64_t data_block_offset = FS_BLKSZ                             // boot block size
+                                   + (boot_block.num_inodes * FS_BLKSZ)   // total inode size
+                                   + (data_block_num * FS_BLKSZ);         // data block offset
+
+        // read the data block
+        data_block_t data_block;
+        if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_offset) != 0) {
+            return -1; 
+        }
+
+        // calculate how many bytes we can read from this block
+        unsigned long bytes_available = FS_BLKSZ - block_offset;
+        unsigned long bytes_this_read = (bytes_to_read < bytes_available) ? bytes_to_read : bytes_available;
+
+        bytes_read = vioblk_io->ops->read(vioblk_io, &data_block, sizeof(data_block_t));
+        if (bytes_read != sizeof(data_block_t)) {
+            return -1; 
+        }
+
+        // copy the data to the buffer
+        memcpy((char*)buf + total_bytes_read, data_block.data + block_offset, bytes_this_read);
+
+        // update counters
+        total_bytes_read += bytes_this_read;
+        bytes_to_read -= bytes_this_read;
+        file_pos += bytes_this_read;
+    }
+
+    // update file position
+    file->file_position = file_pos;
+
+    // return the number of bytes read
+    return total_bytes_read; 
+}
+
+
+
+// int fs_ioctl(struct io_intf* io, int cmd, void* arg)
+//
+// handles control commands. takes in a pointer to the io, control command to execute, and
+// a pointer to additional arguments or output data depending on the command. returns the 
+// result of the helper function for the command if successful
+// this function is used to perform various control operations on a file, such as retrieving
+// or setting the file's position, retrieving its length, or obtaining the blksize
+
+int fs_ioctl(struct io_intf* io, int cmd, void* arg) {
+    // retrieve file struct from io_intf
+    struct file_struct* file = (struct file_struct*)((char*)io - offsetof(struct file_struct, io));
+
+    // check if the file is valid and open
+    if (!file || !file->flags) {
+        return -1;
+    }
+
+    // route the command to the appropriate helper function
+    switch(cmd) {
         case IOCTL_GETLEN:
             return fs_getlen(file, arg);
-
+        
         case IOCTL_GETPOS:
             return fs_getpos(file, arg);
 
@@ -362,13 +476,87 @@ int fs_ioctl(struct io_intf *io, int cmd, void *arg){
             return fs_getblksz(file, arg);
 
         default:
-            return -ENOTSUP;  // from error.h
+            return -ENOTSUP;
     }
-
 }
 
 
 
+// int fs_getlen(struct file_struct* fd, void* arg);
+//
+// retrieves the size of the specified file. fd is the pointer to the file struct
+// and arg points to where the length will be stored. used to obtain the size of a file
+
+int fs_getlen(struct file_struct* fd, void* arg) {
+    // check if fd and arg are valid
+    if (!fd || !arg) {
+        return -1;
+    }
+
+    // store the file size in the mem location pointed by arg
+    *(uint64_t*)arg = fd->file_size;
+    return 0;
+}
 
 
 
+// int fs_getpos(struct file_struct* fd, void* arg);
+//
+// retrieves the position of the specified file. fd is the pointer to the file struct
+// and arg points to where the length will be stored. used to obtain the position within a file
+
+int fs_getpos(struct file_struct* fd, void* arg) {
+    // check if fd and arg are valid
+    if (!fd || !arg) {
+        return -1;
+    }
+
+    // store the current file position in the memory location pointed by arg
+    *(uint64_t*)arg = fd->file_position;
+    return 0;
+}
+
+
+
+// int fs_setpos(struct file_struct* fd, void* arg);
+//
+// this function is used to set the current position within a file. typically to adjust read/write
+// offsets. fd is the pointer to the file struct and arg points to where the length will be stored. 
+// used to set position within a file
+
+int fs_setpos(struct file_struct* fd, void* arg) {
+    // check if fd and arg are valid
+    if(!fd || !arg) {
+        return -1;
+    }
+    
+    // retrieve new position
+    uint64_t new_pos = *(uint64_t*)arg;
+
+    // ensure the new position is smaller than the total file size
+    if (new_pos > fd->file_size) {
+        return -1;
+    }
+
+    // set the file position to the new value
+    fd->file_position = new_pos;
+    return 0;  
+}
+
+
+
+// int fs_getblksz(struct file_struct* fd, void* arg);
+// 
+// this function is used to obtain the blocksize of the filesystem, which is assumed to be 
+// a constant value of 4096 bytes. 
+
+int fs_getblksz(struct file_struct* fd, void* arg) {
+    // check if fd and arg are valid pointers
+    if (!fd || !arg) {
+        return -1;
+    }
+
+    // store block size in memory location pointed by arg
+    *(uint64_t*)arg = FS_BLKSZ;
+    return 0;
+}
