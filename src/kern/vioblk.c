@@ -360,7 +360,18 @@ long vioblk_read (
     long total_read = 0;
 
     while (total_read < bufsz) {
-        if (dev->pos >= dev->size) return 0;
+        if (dev->pos >= dev->size) break;
+
+        // calculate how many bytes we can read
+        // take into account partial reads
+        uint32_t sector_index = dev->pos / dev->blksz;
+        uint32_t sector_offset = dev->pos % dev->blksz;
+
+        unsigned long bytes_available_in_block = dev->blksz - sector_offset;
+
+        unsigned long bytes_remaining = bufsz - total_read;
+        unsigned long bytes_this_read = (bytes_available_in_block < bytes_remaining) ? bytes_available_in_block :
+                                                                                       bytes_remaining;
 
         // set up descriptors
         // request header
@@ -376,7 +387,7 @@ long vioblk_read (
         dev->vq.desc[2].next = 2;
 
         // set up request header
-        dev->vq.req_header.sector = dev->pos / 512;
+        dev->vq.req_header.sector = sector_index;
         dev->vq.req_header.type = VIRTIO_BLK_T_IN;
 
         // set up avail ring
@@ -393,10 +404,10 @@ long vioblk_read (
         intr_restore(intr_state);
 
         // data cooked; copy it back
-        memcpy(buf + total_read, dev->blkbuf, 512);
+        memcpy(buf + total_read, dev->blkbuf + sector_offset, bytes_this_read);
 
-        dev->pos += 512;
-        total_read += 512;
+        dev->pos += bytes_this_read;
+        total_read += bytes_this_read;
     }
 
     return total_read;
@@ -432,6 +443,53 @@ long vioblk_write (
     while (total_written < n) {
         if (dev->pos >= dev->size) return 0;
 
+        // check how many bytes we can write to this file
+        // take into consideration partial writes
+        uint32_t sector_index = dev->pos / dev->blksz;
+        uint32_t sector_offset = dev->pos % dev->blksz;
+
+        unsigned long bytes_available_in_block = dev->blksz - sector_offset;
+
+        unsigned long bytes_remaining = n - total_written;
+        unsigned long bytes_this_write = (bytes_available_in_block < bytes_remaining) ? bytes_available_in_block :
+                                                                                        bytes_remaining;
+
+        // check if its a partial block write
+        // if so we need to read the block in first
+        if (bytes_this_write != dev->blksz) {
+            // set up descriptors
+            // request header
+            dev->vq.desc[1].addr = (uint64_t)&dev->vq.req_header;
+            dev->vq.desc[1].len = sizeof(struct vioblk_request_header);
+            dev->vq.desc[1].flags = VIRTQ_DESC_F_NEXT;
+            dev->vq.desc[1].next = 1;
+
+            // data header
+            dev->vq.desc[2].addr = (uint64_t)dev->blkbuf;
+            dev->vq.desc[2].len = dev->blksz;
+            dev->vq.desc[2].flags = VIRTQ_DESC_F_NEXT | VIRTQ_DESC_F_WRITE;
+            dev->vq.desc[2].next = 2;
+
+            // set up request header
+            dev->vq.req_header.sector = sector_index;
+            dev->vq.req_header.type = VIRTIO_BLK_T_IN;
+
+            // set up avail ring
+            dev->vq.avail.ring[dev->vq.avail.idx % 1] = 0;
+            __sync_synchronize(); // mem barrier
+            dev->vq.avail.idx += 1;
+            __sync_synchronize(); // mem barrier
+
+            // notify the avail ring
+            virtio_notify_avail(dev->regs, 0);
+
+            uint64_t intr_state = intr_disable();
+            condition_wait(&dev->vq.used_updated);
+            intr_restore(intr_state);
+        }
+
+        memcpy(dev->blkbuf + sector_offset, buf + total_written, bytes_this_write);
+
         // set up descriptors
         // request header
         dev->vq.desc[1].addr = (uint64_t)&dev->vq.req_header;
@@ -446,11 +504,8 @@ long vioblk_write (
         dev->vq.desc[2].next = 2;
 
         // set up request header
-        dev->vq.req_header.sector = dev->pos / 512;
+        dev->vq.req_header.sector = sector_index;
         dev->vq.req_header.type = VIRTIO_BLK_T_OUT;
-
-        // copy the data to device buffer
-        memcpy(dev->blkbuf, buf + total_written, 512);
 
         // set up avail ring
         dev->vq.avail.ring[dev->vq.avail.idx % 1] = 0;
@@ -465,8 +520,8 @@ long vioblk_write (
         condition_wait(&dev->vq.used_updated);
         intr_restore(intr_state);
 
-        dev->pos += 512; 
-        total_written += 512;
+        dev->pos += bytes_this_write; 
+        total_written += bytes_this_write;
     }
 
     return total_written;
