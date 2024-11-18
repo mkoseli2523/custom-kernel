@@ -74,6 +74,7 @@ struct pte {
 
 // INTERNAL FUNCTION DECLARATIONS
 //
+struct pte* walk_pt(struct pte* root, uintptr_t vma, int create);
 
 static inline int wellformed_vma(uintptr_t vma);
 static inline int wellformed_vptr(const void * vp);
@@ -241,6 +242,82 @@ void memory_init(void) {
 
     memory_initialized = 1;
 }
+
+// rest of the functions go here
+
+
+void memory_space_reclaim(void) {
+    
+}
+
+// helper function
+
+/**
+ * walks the page table to find or create the pte corresponding to a virtual address
+ * 
+ * this function traverses the page table hierarchy starting from the root and locates
+ * the pte that maps the 4kb page containing the given vma. If create is non-zero the 
+ * function will allocate a new page table(s) as needed to complete the walk down to the 
+ * leaf level (level 0). This function does not map mega or giga pages. 
+ * 
+ * @param root      pointer to the root page table
+ * @param vma       virtual memory address for which the PTE is sought
+ * @param create    if non-zero, indicates that missing pts should be created
+ * 
+ * @return          returns a pointer to the pte containing vma
+ *                  if the pte can't be found or created returns NULL
+ */
+
+struct pte* walk_pt(struct pte* root, uintptr_t vma, int create) {
+    struct pte* pt = root;
+
+    // virtual page number bits
+    uint64_t vpn[3];
+    vpn[0] = VPN0(vma);
+    vpn[1] = VPN1(vma);
+    vpn[2] = VPN2(vma);
+
+    // walk down the page table starting from the highest level (ie level 2)
+    for (int level = 2; level > 0; level--) {
+        // grab the page table entry of the next level
+        struct pte* pte = &pt[vpn[level]];
+
+        // check if the entry is valid
+        if (pte->flags & PTE_V) {
+            // if pte has flags r=0, w=0, and x=0, pte refers to next level
+            if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
+                // leaf pte encountered at a non-leaf level, return
+                return NULL;
+            } else {
+                // pte is valid pointing to the next level
+                // grab the physical address from the pte
+                uintptr_t pa = (uintptr_t)(pte->ppn << PAGE_ORDER);
+
+                // convert it to va and have our pt pointing to it
+                pt = (struct pte*)pa;
+            }
+        } else if (create) {
+            // entry isn't valid create the entry
+            // allocate a new page table
+            struct pte* new_pt = (struct pte*)memory_alloc_page(); // should panic if no pages available
+
+            // get the physical address of the new page table
+            uintptr_t pa = (new_pt->ppn << 12) | (vma & 0xFFF);
+            
+            // set up the pte to point to the new page table
+            pte->ppn = pa >> 12;
+            pte->flags = PTE_V; // this might need to change
+            pt = new_pt;
+        } else {
+            // entry isn't valid return NULL
+            return NULL;
+        }
+    }
+
+    // at level 0, return the pte corresponding to vpn[0]
+    return &pt[vpn[0]];
+}
+
 
 // INTERNAL FUNCTION DEFINITIONS
 //
