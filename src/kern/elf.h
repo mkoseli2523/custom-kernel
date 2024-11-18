@@ -24,8 +24,8 @@
                             (ehdr).e_ident[2] == ELFMAG2 && \
                             (ehdr).e_ident[3] == ELFMAG3)
 
-#define LOAD_START  0x80100000
-#define LOAD_END    0x81000000
+#define LOAD_START  USER_START_VMA
+#define LOAD_END    USER_END_VMA
 
 // Elf Header Structure for 64 bit ELF
 typedef struct elf64_hdr
@@ -69,7 +69,7 @@ typedef struct elf64_phdr{
 //           will be filled in with the entry point of the ELF file.
 //           Return 0 on success or a negative error code on error.
 
-int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io));
+int elf_load(struct io_intf *io, void (**entryptr)(void));
 
 //           _ELF_H_
 #endif
