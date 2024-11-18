@@ -12,9 +12,11 @@
 //
 #include "elf.h"
 #include "io.h"
+#include "console.h"
+#include "config.h"
+#include "memory.h"
 #include <stdint.h>
 #include <string.h> 
-#include "console.h"
 
 /** 
  * elf_load - Load an ELF executable from an I/O interface.
@@ -41,7 +43,7 @@
  *     -8 if loading a segment fails
  *     -9 if the ELF file is not little-endian
  */
-int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
+int elf_load(struct io_intf *io, void (**entryptr)(void)){
     Elf64_Ehdr elf_header;
 
     // 1. Read and validate ELF Header
@@ -76,12 +78,25 @@ int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
             return -5; // Failed to read program header
         }
 
+        if ((phdr.p_vaddr + phdr.p_memsz) > USER_STACK_VMA) {
+            return -12; // Segment overlaps with the stack
+        }
+        
         if (phdr.p_type == PT_LOAD) {
             // Check if segment is within the allowed memory range
-            if (phdr.p_vaddr < LOAD_START || (phdr.p_vaddr + phdr.p_memsz) > LOAD_END) {
+            if (phdr.p_vaddr < USER_START_VMA || (phdr.p_vaddr + phdr.p_memsz) > USER_END_VMA) {
                 return -6; // Segment is out of bounds
             }
 
+            // Map memory for the segment
+            for (uint64_t offset = 0; offset < phdr.p_memsz; offset += PAGE_SIZE){
+                void *vaddr = (void *)(phdr.p_vaddr + offset);
+                void *page = memory_alloc_and_map_page((uintptr_t)vaddr, PTE_R | PTE_W | PTE_X | PTE_U);
+                if (!page){
+                    return -10; //failed to allocate memory
+                }
+            }
+            
             // Load the segment into memory at p_vaddr
             if (ioseek(io, phdr.p_offset) != 0) {
                 return -7; // Failed to seek to segment offset
@@ -100,9 +115,9 @@ int elf_load(struct io_intf *io, void (**entryptr)(struct io_intf *io)){
 
 
     // 4. Set the entry point function pointer
-    *entryptr = (void (*)(struct io_intf *io))elf_header.e_entry;
+    *entryptr = (void (*)(void))elf_header.e_entry;
 
-    console_printf("\nEntryptr: %p \n", (void*)*entryptr);
+    console_printf("\n ELF loaded successfully. Entryptr: %p \n", (void*)*entryptr);
 
     return 0; // Success
 }
