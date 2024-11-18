@@ -1,13 +1,5 @@
-// intr.c - Interrupt management
-// 
-
-#ifdef INTR_TRACE
-#define TRACE
-#endif
-
-#ifdef INTR_DEBUG
-#define DEBUG
-#endif
+//           intr.c - Interrupt management
+//           
 
 #include "intr.h"
 #include "trap.h"
@@ -18,20 +10,20 @@
 
 #include <stddef.h>
 
-// INTERNAL COMPILE-TIME CONSTANT DEFINITIONS
-//
+//           INTERNAL COMPILE-TIME CONSTANT DEFINITIONS
+//          
 
 #ifndef NIRQ
 #define NIRQ 32
 #endif
 
-// EXPORTED GLOBAL VARIABLE DEFINITIONS
-// 
+//           EXPORTED GLOBAL VARIABLE DEFINITIONS
+//           
 
 char intr_initialized = 0;
 
-// INTERNAL GLOBAL VARIABLE DEFINITIONS
-//
+//           INTERNAL GLOBAL VARIABLE DEFINITIONS
+//          
 
 static struct {
     void (*isr)(int,void*);
@@ -39,22 +31,23 @@ static struct {
     int prio;
 } isrtab[NIRQ];
 
-// INTERNAL FUNCTION DECLARATIONS
-//
+//           INTERNAL FUNCTION DECLARATIONS
+//          
 
 static void extern_intr_handler(void);
 
-// EXPORTED FUNCTION DEFINITIONS
-//
+//           EXPORTED FUNCTION DEFINITIONS
+//          
 
 void intr_init(void) {
-    trace("%s()", __func__);
-
-    intr_disable(); // should be disabled already
+    //           should be disabled already
+    intr_disable();
     plic_init();
 
-    csrw_sip(0); // clear all pending interrupts
-    csrw_sie(RISCV_SIE_SEIE); //enable interrupts from plic
+    //           clear all pending interrupts
+    csrw_mip(0);
+    //           enable interrupts from plic
+    csrw_mie(RISCV_MIE_MEIE);
 
     intr_initialized = 1;
 }
@@ -86,28 +79,22 @@ void intr_disable_irq(int irqno) {
     plic_disable_irq(irqno);
 }
 
-// void intr_handler(int code, struct trap_frame * tfr)
-// Called from trapasm.s to handle an interrupt. Dispataches to
-// timer_intr_handler and extern_intr_handler.
+//           INTERNAL FUNCTION DEFINITIONS
+//          
 
-void intr_handler(int code, struct trap_frame * tfr) {
+void intr_handler(int code) {
     switch (code) {
-    case RISCV_SCAUSE_INTR_EXCODE_SEI:
+    case RISCV_MCAUSE_EXCODE_MTI:
+        timer_intr_handler();
+        break;
+    case RISCV_MCAUSE_EXCODE_MEI:
         extern_intr_handler();
         break;
     default:
         panic("unhandled interrupt");
         break;
     }
-
-    // If we were running user mode, yield thread.
-
-    if ((tfr->sstatus & RISCV_SSTATUS_SPP) == 0)
-        thread_yield();
 }
-
-// INTERNAL FUNCTION DEFINITIONS
-//
 
 void extern_intr_handler(void) {
     int irqno;

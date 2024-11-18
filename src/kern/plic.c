@@ -48,7 +48,7 @@ void plic_init(void) {
 
     for (i = 0; i < PLIC_SRCCNT; i++) {
         plic_set_source_priority(i, 0);
-        plic_enable_source_for_context(0, i);
+        plic_enable_source_for_context(1, i); // changed context no
     }
 }
 
@@ -67,13 +67,13 @@ extern void plic_disable_irq(int irqno) {
 extern int plic_claim_irq(void) {
     // Hardwired context 0 (M mode on hart 0)
     trace("%s()", __func__);
-    return plic_claim_context_interrupt(0);
+    return plic_claim_context_interrupt(1); // changed context no
 }
 
 extern void plic_close_irq(int irqno) {
     // Hardwired context 0 (M mode on hart 0)
     trace("%s(irqno=%d)", __func__, irqno);
-    plic_complete_context_interrupt(0, irqno);
+    plic_complete_context_interrupt(1, irqno); // changed context no
 }
 
 // INTERNAL FUNCTION DEFINITIONS

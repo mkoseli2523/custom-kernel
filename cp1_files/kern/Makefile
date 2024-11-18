@@ -1,4 +1,3 @@
-# Based on xv6-riscv Makefile; see LICENSE.
 
 TOOLPREFIX=riscv64-unknown-elf-
 QEMU=qemu-system-riscv64
@@ -15,20 +14,19 @@ CORE_OBJS = \
 	string.o \
 	trapasm.o \
 	intr.o \
-	plic.o \
-	timer.o \
-	thread.o \
-	thrasm.o \
-	ezheap.o \
 	io.o \
 	device.o \
-	uart.o \
 	virtio.o \
 	vioblk.o \
 	console.o \
-	excp.o \
-	memory.o
-	# Add more object files here
+	thread.o \
+	timer.o \
+	plic.o \
+	thrasm.o \
+	uart.o \
+	ezheap.o \
+	elf.o \
+	kfs.o
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -mcmodel=medany -fno-pie -no-pie -march=rv64g -mabi=lp64d
@@ -50,24 +48,48 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	then echo "-gdb tcp::$(GDBPORT)"; \
 	else echo "-s -p $(GDBPORT)"; fi)
 
-all: kernel.elf
+all: shell.elf
 
-kernel.elf: $(CORE_OBJS) main.o companion.o
+shell.elf: $(CORE_OBJS) main_shell.o companion.o
 	$(LD) -T kernel.ld -o $@ $^
 
-run-kernel: kernel.elf
+run-shell: shell.elf
 	$(QEMU) $(QEMUOPTS)
 
-debug-kernel: kernel.elf
+debug-shell: shell.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+# You might want to add more here
+test_elf_loader.elf: $(CORE_OBJS) test_elf_loader.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_elf_loader: test_elf_loader.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_elf_loader: test_elf_loader.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+	
+test_vioblk.elf: $(CORE_OBJS) main_test_vioblk.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_vioblk: test_vioblk.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_vioblk: test_vioblk.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+# fs test
+test_fs.elf: $(CORE_OBJS) test.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_fs: test_fs.elf
+	$(QEMU) $(QEMUOPTS)
 
 clean:
 	if [ -f companion.o ]; then cp companion.o companion.o.save; fi
 	rm -rf *.o *.elf *.asm
 	if [ -f companion.o.save ]; then mv companion.o.save companion.o; fi
 
-# This will load the trek file into your kernel memory, via kernel.ld
-# `mkcomp.sh`, as well as the documentation, contain discussion
 companion.o:
 	if [ -f ../user/trek ]; then sh ./mkcomp.sh ../user/trek; fi
 	if ! [ -f ../user/trek ]; then sh ./mkcomp.sh; fi

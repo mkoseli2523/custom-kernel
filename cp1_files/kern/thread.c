@@ -12,8 +12,6 @@
 #include "string.h"
 #include "csr.h"
 #include "intr.h"
-#include "process.h"
-#include "memory.h"
 
 // COMPILE-TIME PARAMETERS
 //
@@ -24,10 +22,24 @@
 #define NTHR 16
 #endif
 
+// Size of stack allocated for new threads.
+
+#ifndef THREAD_STKSZ
+#define THREAD_STKSZ 4096
+#endif
+
+// Size of guard region between stack bottom (highest address + 1) and thread
+// structure. Gives some protection against bugs that write past the end of the
+// stack, but not much.
+
+#ifndef THREAD_GRDSZ
+#define THREAD_GRDSZ 16
+#endif
+
 // EXPORTED GLOBAL VARIABLES
 //
 
-char thrmgr_initialized = 0;
+char thread_initialized = 0;
 
 // INTERNAL TYPE DEFINITIONS
 //
@@ -49,12 +61,11 @@ struct thread_context {
 
 struct thread {
     struct thread_context context; // must be first member (thrasm.s)
+    enum thread_state state;
+    int id;
     const char * name;
     void * stack_base;
     size_t stack_size;
-    enum thread_state state;
-    int id;
-    struct process * proc;
     struct thread * parent;
     struct thread * list_next;
     struct condition * wait_cond;
@@ -64,23 +75,32 @@ struct thread {
 // INTERNAL GLOBAL VARIABLES
 //
 
+extern char _main_stack[];  // from start.s
+extern char _main_guard[];  // from start.s
+
 #define MAIN_TID 0
 #define IDLE_TID (NTHR-1)
 
-struct thread main_thread = {
+static struct thread main_thread = {
     .name = "main",
     .id = MAIN_TID,
     .state = THREAD_RUNNING,
+    .stack_base = &_main_guard,
+
     .child_exit = {
         .name = "main.child_exit"
     }
 };
 
-struct thread idle_thread = {
+extern char _idle_stack[];  // from thrasm.s
+extern char _idle_guard[];  // from thrasm.s
+
+static struct thread idle_thread = {
     .name = "idle",
     .id = IDLE_TID,
     .state = THREAD_READY,
-    .parent = &main_thread
+    .parent = &main_thread,
+    .stack_base = &_idle_guard
 };
 
 static struct thread * thrtab[NTHR] = {
@@ -118,15 +138,8 @@ static void init_main_thread(void);
 
 static void init_idle_thread(void);
 
-// Sets the RISC-V thread pointer to point to a thread.
-
 static void set_running_thread(struct thread * thr);
-
-// Returns a string representing the state name. Used by debug and trace
-// statements, so marked unused to avoid compiler warnings.
-
-static const char * thread_state_name(enum thread_state state)
-    __attribute__ ((unused));
+static const char * thread_state_name(enum thread_state state);
 
 // void recycle_thread(int tid)
 // Reclaims a thread's slot in thrtab and makes its parent the parent of its
@@ -147,15 +160,13 @@ static void suspend_self(void);
 // The following functions manipulate a thread list (struct thread_list). Note
 // that threads form a linked list via the list_next member of each thread
 // structure. Thread lists are used for the ready-to-run list (ready_list) and
-// for the list of waiting threads of each condition variable. These functions
-// are not interrupt-safe! The caller must disable interrupts before calling any
-// thread list function that may modify a list that is used in an ISR.
+// for the list of waiting threads of each condition variable.
 
 static void tlclear(struct thread_list * list);
 static int tlempty(const struct thread_list * list);
 static void tlinsert(struct thread_list * list, struct thread * thr);
 static struct thread * tlremove(struct thread_list * list);
-static void tlappend(struct thread_list * l0, struct thread_list * l1);
+static void tlappend(struct thread_list * l0, const struct thread_list * l1);
 
 static void idle_thread_func(void * arg);
 
@@ -163,15 +174,14 @@ static void idle_thread_func(void * arg);
 // defined in thrasm.s
 //
 
-extern struct thread * _thread_swtch(struct thread * resuming_thread);
-
 extern void _thread_setup (
-    struct thread * thr, void * ksp, void (*start)(void), ...);
+    struct thread * thr,
+    void * sp,
+    void (*start)(void * arg),
+    void * arg);
 
-extern void __attribute__ ((noreturn)) _thread_finish_jump (
-    const struct thread_stack_anchor * stack_anchor,
-    uintptr_t usp, uintptr_t upc, ...);
-
+extern struct thread * _thread_swtch (
+    struct thread * resuming_thread);
 
 // EXPORTED FUNCTION DEFINITIONS
 //
@@ -184,17 +194,14 @@ void thread_init(void) {
     init_main_thread();
     init_idle_thread();
     set_running_thread(&main_thread);
-    thrmgr_initialized = 1;
+    thread_initialized = 1;
 }
 
 int thread_spawn(const char * name, void (*start)(void *), void * arg) {
-    struct thread_stack_anchor * stack_anchor;
-    void * stack_page;
     struct thread * child;
-    int saved_intr_state;
     int tid;
 
-    trace("%s(name=\"%s\") in %s", __func__, name, CURTHR->name);
+    trace("%s(name=\"%s\") in %s", __func__, name, running_thread()->name);
 
     // Find a free thread slot.
 
@@ -208,29 +215,20 @@ int thread_spawn(const char * name, void (*start)(void *), void * arg) {
     
     // Allocate a struct thread and a stack
 
-    child = kmalloc(PAGE_SIZE + sizeof(struct thread));
-    child = (void*)child + PAGE_SIZE;
+    child = kmalloc(THREAD_STKSZ + THREAD_GRDSZ + sizeof(struct thread));
+    child = (void*)child + THREAD_STKSZ + THREAD_GRDSZ;
     memset(child, 0, sizeof(struct thread));
-
-    stack_page = memory_alloc_page();
-    stack_anchor = stack_page + PAGE_SIZE - sizeof(struct thread_stack_anchor);
-    stack_anchor->thread = child;
-    stack_anchor->reserved = 0;
-
 
     thrtab[tid] = child;
 
     child->id = tid;
     child->name = name;
     child->parent = CURTHR;
-    child->proc = CURTHR->proc;
-    child->stack_base = stack_anchor;
-    child->stack_size = PAGE_SIZE - sizeof(struct thread_stack_anchor);
+    child->stack_base = (void*)child - THREAD_GRDSZ;
+    child->stack_size = THREAD_STKSZ;
     set_thread_state(child, THREAD_READY);
-
-    saved_intr_state = intr_disable();
+    _thread_setup(child, child->stack_base, start, arg);
     tlinsert(&ready_list, child);
-    intr_restore(saved_intr_state);
     
     return tid;
 }
@@ -250,14 +248,10 @@ void thread_exit(void) {
     panic("thread_exit() failed");
 }
 
-void thread_jump_to_user(uintptr_t usp, uintptr_t upc) {
-    _thread_finish_jump(CURTHR->stack_base, usp, upc);
-}
-
 void thread_yield(void) {
     trace("%s() in %s", __func__, CURTHR->name);
 
-    // assert (intr_enabled());
+    assert (intr_enabled());
     assert (CURTHR->state == THREAD_RUNNING);
 
     suspend_self();
@@ -307,48 +301,63 @@ int thread_join_any(void) {
 
 // Wait for specific child thread to exit. Returns the thread id of the child.
 
+/***********************************************************************
+* int thread_join(int tid)
+* 
+* Waits for the specified child thread (by TID) to exit. If the child 
+* has already exited, returns immediately. Otherwise, waits for the child 
+* to exit and then cleans up its resources.
+* 
+* Arguments: 
+* - tid: Thread ID of the child thread to join.
+* 
+* Returns: 
+* - tid on success (child thread exits).
+* - -1 if TID is invalid or calling thread is not the parent.
+*
+* Effects: 
+* - Waits for the specified child thread to exit.
+* - Recycles the thread’s resources upon exit.
+***********************************************************************/
+
 int thread_join(int tid) {
-    struct thread * const child = thrtab[tid];
+    // FIXME your goes code here
+    struct thread *child;
 
-    trace("%s(tid=%d)", __func__, tid);
+    trace("%s(tid=%d) in %s", __func__, tid, CURTHR->name); //debugging
 
-    if (tid <= 0 || NTHR <= tid)
-        return -1;
+    // Validate the TID and check if thread exists
+    if(tid <= 0 || tid >= NTHR || thrtab[tid] == NULL){
+        return -1; // Invalid TID or thread does not exist
+    }
 
-    trace("%s(tid=%d) in %s", __func__, tid, CURTHR->name);
+    child = thrtab[tid]; // Assign child variable as child thread pointer from thread table
 
-    // Can only wait for child if we're the parent
+    // Check if the calling thread is the parent of the specified child
+    if(child->parent != CURTHR){
+        return -1; // Not the parent of the specified thread
+    }
 
-    if (child == NULL || child->parent != CURTHR)
-        return -1;
-    
-    // Wait for child to exit. Whenever a child exits, it signals its parent's
-    // child_exit condition.
+    // Check if the child has already exited
+    if(child->state == THREAD_EXITED){
+        // Child has already exited, recycle the thread and return TID
+        recycle_thread(tid);
+        return tid;
+    }
 
-    while (child->state != THREAD_EXITED)
-        condition_wait(&CURTHR->child_exit);
-    
-    recycle_thread(tid);
+    condition_wait(&CURTHR->child_exit); // Puts parent thread in waiting state until child thread signals its exit
 
-    return tid;
-}
+    // Once condition_wait returns, the child should have exited 
+    if(child->state == THREAD_EXITED){
+        // Child has exited, recycle the thread and return TID
+        recycle_thread(tid);
+        thrtab[tid] = NULL;
+        return tid;
+    }
 
-struct process * thread_process(int tid) {
-    assert (0 <= tid || tid < NTHR);
-    assert (thrtab[tid] != NULL);
-    return thrtab[tid]->proc;
-}
-
-void thread_set_process(int tid, struct process * proc) {
-    assert (0 <= tid || tid < NTHR);
-    assert (thrtab[tid] != NULL);
-    thrtab[tid]->proc = proc;
-}
-
-const char * thread_name(int tid) {
-    assert (0 <= tid || tid < NTHR);
-    assert (thrtab[tid] != NULL);
-    return thrtab[tid]->name;
+    //If we reach this part, something went horribly wrong
+    panic("spurious2 child_exit signal");
+    return -1; // realistically should never reach here.
 }
 
 void condition_init(struct condition * cond, const char * name) {
@@ -369,66 +378,70 @@ void condition_wait(struct condition * cond) {
     CURTHR->wait_cond = cond;
     CURTHR->list_next = NULL;
 
-    saved_intr_state = intr_disable();
     tlinsert(&cond->wait_list, CURTHR);
-    intr_restore(saved_intr_state);
+
+    saved_intr_state = intr_enable();
 
     suspend_self();
-}
-
-void condition_broadcast(struct condition * cond) {
-    int saved_intr_state;
-    struct thread * thr;
-
-    // Fast path: if there are no threads waiting, return.
-
-    if (tlempty(&cond->wait_list))
-        return;
-
-    // Mark all waiting threads runnable. This is *not* a constant-time
-    // operation, however, keeping having an enum thread_state member of struct
-    // thread for keeping track of thread state is useful for debugging.
-
-    saved_intr_state = intr_disable();
-
-    for (thr = cond->wait_list.head; thr != NULL; thr = thr->list_next) {
-        assert (thr->state == THREAD_WAITING);
-        assert (thr->wait_cond == cond);
-        set_thread_state(thr, THREAD_READY);
-        thr->wait_cond = NULL;
-    }
-
-    // Append condition variable wait list to run list
-
-    tlappend(&ready_list, &cond->wait_list);
-    tlclear(&cond->wait_list);
 
     intr_restore(saved_intr_state);
+}
+
+/***********************************************************************
+* void condition_broadcast(struct condition * cond)
+* 
+* Wakes up all threads waiting on the specified condition variable by 
+* moving them from the condition's wait list to the ready list. Each 
+* thread's state is changed to "READY", and they are scheduled to run 
+* once selected.
+* 
+* Arguments: 
+* - cond: Pointer to the condition variable to broadcast.
+* 
+* Returns: 
+* void
+*
+* Effects: 
+* - Moves all waiting threads from the condition's wait list to the ready list.
+* - Changes the state of each waiting thread to "READY".
+* - Allows the threads to be scheduled for execution.
+***********************************************************************/
+
+void condition_broadcast(struct condition * cond) {
+    // FIXME your code goes here
+    struct thread *thr;
+    
+    trace("%s(cond=<%s>) in %s", __func__, cond->name, CURTHR->name);
+
+    // Move all threads waiting on this condition to the ready list
+    while(!tlempty(&cond->wait_list)){
+        // Remove the first thread from the condition's wait list
+        thr = tlremove(&cond->wait_list);
+
+        // Set the thread's state to "READY" and insert into ready list
+        set_thread_state(thr, THREAD_READY);
+        tlinsert(&ready_list, thr);
+    }
 }
 
 // INTERNAL FUNCTION DEFINITIONS
 //
 
 void init_main_thread(void) {
-    extern char _main_stack_anchor[]; // from thrasm.s
-    extern char _main_stack_lowest[]; // from thrasm.s
-
-    main_thread.stack_base = _main_stack_anchor;
-    main_thread.stack_size = _main_stack_anchor - _main_stack_lowest;
+    // Note: _main_guard is at the base of the stack (where the stack pointer
+    // starts), and _main_stack is the lowest address of the stack.
+    main_thread.stack_size = (void*)_main_guard - (void*)_main_stack;
 }
 
 void init_idle_thread(void) {
-    extern char _idle_stack_anchor[]; // from thrasm.s
-    extern char _idle_stack_lowest[]; // from thrasm.s
-
-    extern void _thread_setup (
-        struct thread * thr, void * sp, void (*start)(void), ...);
-
-    idle_thread.stack_base = _idle_stack_anchor;
-    idle_thread.stack_size = _idle_stack_anchor - _idle_stack_lowest;
-    _thread_setup(&idle_thread, _idle_stack_anchor, idle_thread_func);
-    tlinsert(&ready_list, &idle_thread); // interrupts still disabled
-
+    idle_thread.stack_size = (void*)_idle_guard - (void*)_idle_stack;
+    
+    _thread_setup (
+        &idle_thread,
+        idle_thread.stack_base,
+        idle_thread_func, NULL);
+    
+    tlinsert(&ready_list, &idle_thread);
 }
 
 static void set_running_thread(struct thread * thr) {
@@ -469,56 +482,55 @@ void recycle_thread(int tid) {
     kfree(thr);
 }
 
+/***********************************************************************
+* void suspend_self(void)
+* 
+* Suspends the execution of the current thread and switches context to 
+* the next thread from the ready list. If no other threads are available, 
+* switches to the idle thread. Marks the current thread as "READY" and 
+* ensures proper context switching to the next thread.
+* 
+* Arguments: 
+* void
+* 
+* Returns: 
+* void
+*
+* Effects: 
+* - Ensures the current thread is marked as "READY" before suspension.
+* - Switches context to the next thread from the ready list, or to the idle 
+*   thread if no other threads are available.
+* - Sets the next thread's state to "RUNNING".
+***********************************************************************/
+
 void suspend_self(void) {
-    struct thread * susp_thread; // suspending thread
-    struct thread * next_thread; // resuming thread
-    struct thread * prev_thread; // previously thread
-    int saved_intr_state;
+    // FIXME your code here
+    struct thread *next_thread;
 
-    trace("%s() in %s", __func__, CURTHR->name);
+    // Ensure interrupts are enabled before suspending
+    assert(intr_enabled());
 
-    // The idle thread is always runnable, and the idle thread only calls
-    // suspend_self() if the ready_list is not empty.
+    // Mark current thread as "READY" and insert into the ready list
+    if (CURTHR->state == THREAD_RUNNING) {
+        set_thread_state(CURTHR, THREAD_READY);
+        tlinsert(&ready_list, CURTHR);    
+    }
 
-    assert (!tlempty(&ready_list));
+    // Check if there is another thread to run, otherwise switch to idle thread
+    if (tlempty(&ready_list)) {
+        // No other threads available, switch to idle thread
+        next_thread = &idle_thread;
+    } else {
+        // Else get the next thread to run from the ready list
+        next_thread = tlremove(&ready_list);
+    }
 
-    susp_thread = CURTHR;
-
-    // Get a READY thread from the ready list and mark it running
-
-    saved_intr_state = intr_disable();
-
-    next_thread = tlremove(&ready_list);
-    assert(next_thread->state == THREAD_READY);
+    // Set current thread as "READY"
     set_thread_state(next_thread, THREAD_RUNNING);
-    
-    // If the current thread is still running, mark it ready-to-run and put it
-    // in the back of the ready-to-run list.
 
-    if (susp_thread->state == THREAD_RUNNING) {
-        set_thread_state(susp_thread, THREAD_READY);
-        tlinsert(&ready_list, susp_thread);
-    }
+    //Switch context to the next thread, current thread will resume at this point when it is scheduled again
+    _thread_swtch(next_thread);
 
-    intr_enable();
-
-    if (next_thread->proc != NULL)
-        memory_space_switch(next_thread->proc->mtag);
-
-    trace("Thread <%s> calling _thread_swtch(<%s>)",
-        CURTHR->name, next_thread->name);
-    
-    prev_thread = _thread_swtch(next_thread);
-
-    trace("_thread_swtch() returned in %s", CURTHR->name);
-
-    if (prev_thread->state == THREAD_EXITED) {
-        memory_free_page(prev_thread->stack_base - PAGE_SIZE);
-        prev_thread->stack_base = NULL;
-        prev_thread->stack_size = 0;
-    }
-
-    intr_restore(saved_intr_state);
 }
 
 void tlclear(struct thread_list * list) {
@@ -531,11 +543,6 @@ int tlempty(const struct thread_list * list) {
 }
 
 void tlinsert(struct thread_list * list, struct thread * thr) {
-    thr->list_next = NULL;
-
-    if (thr == NULL)
-        return;
-
     if (list->tail != NULL) {
         assert (list->head != NULL);
         list->tail->list_next = thr;
@@ -548,27 +555,22 @@ void tlinsert(struct thread_list * list, struct thread * thr) {
 }
 
 struct thread * tlremove(struct thread_list * list) {
-    struct thread * thr;
+    struct thread * const thr = list->head;
 
-    thr = list->head;
-    
-    if (thr == NULL)
-        return NULL;
-
+    assert(thr != NULL);
     list->head = thr->list_next;
     
     if (list->head != NULL)
         thr->list_next = NULL;
     else
         list->tail = NULL;
-
-    thr->list_next = NULL;
+    
     return thr;
 }
 
-// Appends elements of l1 to the end of l0 and clears l1.
+// Appends l1 to the end of l0. l1 remains unchanged, but is now part of l0.
 
-void tlappend(struct thread_list * l0, struct thread_list * l1) {
+void tlappend(struct thread_list * l0, const struct thread_list * l1) {
     if (l0->head != NULL) {
         assert(l0->tail != NULL);
         
@@ -582,9 +584,6 @@ void tlappend(struct thread_list * l0, struct thread_list * l1) {
         l0->head = l1->head;
         l0->tail = l1->tail;
     }
-
-    l1->head = NULL;
-    l1->tail = NULL;
 }
 
 void idle_thread_func(void * arg __attribute__ ((unused))) {

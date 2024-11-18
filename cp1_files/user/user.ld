@@ -1,7 +1,5 @@
-/* Based on linker script from the xv6-riscv project. */
-
 OUTPUT_ARCH("riscv")
-ENTRY(_start)
+ENTRY(main)
 
 PHDRS {
   text PT_LOAD FLAGS(5);
@@ -10,7 +8,7 @@ PHDRS {
 
 SECTIONS {
 
-  . = 0xC0000000;
+  . = 0x80100000;
 
   .text (READONLY) : {
     PROVIDE(_user_text_start = .);
