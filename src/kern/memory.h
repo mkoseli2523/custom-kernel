@@ -23,7 +23,7 @@
 #define PTE_G (1 << 5)
 #define PTE_A (1 << 6)
 #define PTE_D (1 << 7)
-
+#define PTE_FLAGS_MASK (PTE_R | PTE_W | PTE_X | PTE_U | PTE_G)
 // COMPILE-TIME CONFIGURATION
 //
 
