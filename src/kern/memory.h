@@ -129,12 +129,18 @@ extern void * memory_alloc_and_map_range (
 
 extern void memory_unmap_and_free_user(void);
 
+// extern void memory_set_page_flags(const void * vp, uint8_t rwxug_flags);
+// Sets the flags of the PTE associated with vp. Only works with 4 kB pages.
+
+extern void memory_set_page_flags(
+    const void * vp, uint8_t rwxug_flags);
+
 // void memory_set_range_flags (
 //      const void * vp, size_t size, uint_fast8_t rwxug_flags)
 // Chnages the PTE flags for all pages in a mapped range.
 
 extern void memory_set_range_flags (
-const void * vp, size_t size, uint_fast8_t rwxug_flags);
+    const void * vp, size_t size, uint_fast8_t rwxug_flags);
 
 // int memory_validate_vptr_len (
 //     const void * vp, size_t len, uint_fast8_t rwxug_flags);

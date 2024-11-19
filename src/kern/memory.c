@@ -74,7 +74,7 @@ struct pte {
 
 // INTERNAL FUNCTION DECLARATIONS
 //
-struct pte* walk_pt(struct pte* root, uintptr_t vma, int create);
+struct pte * walk_pt(struct pte* root, uintptr_t vma, int create);
 
 static inline int wellformed_vma(uintptr_t vma);
 static inline int wellformed_vptr(const void * vp);
@@ -245,9 +245,179 @@ void memory_init(void) {
 
 // rest of the functions go here
 
+/**
+ * switches to the main memory space, and reclaims the previous mem space
+ * 
+ * this function first fetches the old satp (supervisor address translation and protection register),
+ * extracts the old rootpage from it, switches to the main memory spaces, flushes tlb, and iteratively
+ * reclaims the old memory space by calling walk_pt helper function to get to the leaf pt and calls
+ * memory_free_page function to finally reclaim the page
+ */
 
 void memory_space_reclaim(void) {
-    
+    // retrieve the current satp value (ie the old mem space)
+    uintptr_t old_satp = active_space_mtag();
+
+    // extract the root page table pointer
+    struct pte* old_root_pa = mtag_to_root(old_satp);
+
+    // switch to the main mem space
+    csrw_satp(main_mtag);
+
+    // flush the tlb
+    sfence_vma();
+
+    // reclaim the old memory space's page tables and pages
+    for (uintptr_t vaddr = USER_START_VMA; vaddr < USER_END_VMA; vaddr += PAGE_SIZE) {
+        // walk the pt
+        struct pte* pte = walk_pt(old_root_pa, vaddr, 0);
+        
+        // check if pte is valid
+        if (!pte) continue;
+
+        // check if valid flag is set
+        if (!(pte->flags & PTE_V)) continue; 
+
+        // skip global mappings
+        if (pte->flags & PTE_G) continue;
+
+        // free the physical page if its a leaf pte
+        if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
+            // free the phyical page
+            uintptr_t pa = (uintptr_t)(pte->ppn) << 12;
+            memory_free_page(pa);
+
+            // invalidate the pte
+            memset(pte, 0, sizeof(struct pte));
+        }
+    }
+
+    // can't free the old root pt itself
+    // since it might contain global or shared mappings
+}
+
+
+
+/**
+ * allocates and maps a range of virtual addresses with provided flags
+ * 
+ * this function allocates physical pages and maps them to the specified virtual memory range.
+ * it uses memory_alloc_and_map_page function to allocate and map individual pages
+ * 
+ * @param vma           starting vma to map
+ * @param size          size of the memory range to allocate and map
+ * @param rwxug_flags   flags for the page table entry
+ * 
+ * @return              returns a pointer to the beginning of the mapped virtual memory address
+ *                      returns NULL if allocation or mapping fails
+ */
+
+void * memory_alloc_and_map_range (uintptr_t vma, size_t size, uint_fast8_t rwxug_flags) {
+    uintptr_t start_vma = vma;
+    uintptr_t end_vma = start_vma + size;
+    size_t page_size = PAGE_SIZE;
+
+    // allign start and end addresses
+    round_down_addr(start_vma, page_size);
+    round_up_addr(end_vma, page_size);
+
+    size_t num_pages = (end_vma - start_vma) / page_size;
+
+    for (size_t pages_mapped = 0; pages_mapped < num_pages; pages_mapped++) {
+        uintptr_t current_vma = start_vma + pages_mapped * page_size;
+
+        void* result = memory_alloc_and_map_page(current_vma, rwxug_flags);
+
+        if (!result) {
+            // allocation or mapping failed 
+            // unroll each allocated page
+            for (int i = 0; i < pages_mapped; i++) {
+                uintptr_t rollback_vma = start_vma + i * page_size;
+
+                // unmap the page and free the physical memory
+                memory_free_page(rollback_vma);
+            }
+
+            kprintf("something went wrong when allocating a page, rolling back each allocated page\n");
+            return NULL;
+        }
+    }
+
+    return (void *)start_vma;
+}
+
+
+
+/**
+ * modifies flags of all ptes within the specified virtual memory range
+ * 
+ * this function iterates through each page with the starting address and the size of pages
+ * to be allocated, then calls memory_set_page_flags function to modify the flags of a given 
+ * page
+ * 
+ * @param vp            starting virtual address of the range
+ * @param size          size of the range in bytes
+ * @param rwxug_flags   new flags
+ */
+
+void memory_set_range_flags (const void * vp, size_t size, uint_fast8_t rwxug_flags) {
+    uintptr_t start_addr = vp;
+    uintptr_t end_addr = start_addr + size;
+    size_t page_size = PAGE_SIZE;
+
+    // make sure the start and end addresses are page aligned
+    round_down_addr(start_addr, page_size);
+    round_up_addr(end_addr, page_size);
+
+    // calculate the num of pages
+    size_t num_pages = (end_addr - start_addr) / page_size;
+
+    // iterate over each page in the range
+    for (size_t current_page = 0; current_page < num_pages; current_page++) {
+        // grab the current address and set the flag
+        uintptr_t current_addr = start_addr + current_page * page_size;
+        memory_set_page_flags((void *)current_addr, rwxug_flags);       
+    }
+}
+
+
+
+/**
+ * unmaps and frees all user space pages
+ * 
+ * this function retrieves the root page table and traverses the page table hierarchy
+ * to unmap and free all pages that have the user flag set
+ */
+
+void memory_unmap_and_free_user(void) {
+    // retrieve the current satp value (ie the old mem space)
+    uintptr_t old_satp = active_space_mtag();
+
+    // extract the root page table pointer
+    struct pte* root_pt = mtag_to_root(old_satp);
+
+    // iterate over the user virtual address range and unmap user pages
+    for (uintptr_t vma = USER_START_VMA; vma < USER_END_VMA; vma += PAGE_SIZE) {
+        // walk to the pte
+        struct pte* pte = walk_pt(root_pt, vma, 0);
+
+        // check if pte is valid
+        if (!pte || (!(pte->flags & PTE_V))) continue; 
+
+        // check if user flag is set
+        if (!(pte->flags & PTE_U)) continue;
+
+        // if leaf, unmap and free the pp
+        if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
+            // leaf page, unmap and free
+            uintptr_t pa = (uintptr_t)(pte->ppn) << 12;
+
+            memory_free_page((void *)pa);
+        }
+    }
+
+    // flush the tlb
+    sfence_vma();
 }
 
 // helper function
@@ -268,7 +438,7 @@ void memory_space_reclaim(void) {
  *                  if the pte can't be found or created returns NULL
  */
 
-struct pte* walk_pt(struct pte* root, uintptr_t vma, int create) {
+struct pte * walk_pt(struct pte* root, uintptr_t vma, int create) {
     struct pte* pt = root;
 
     // virtual page number bits
