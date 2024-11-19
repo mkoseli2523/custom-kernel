@@ -420,6 +420,143 @@ void memory_unmap_and_free_user(void) {
     sfence_vma();
 }
 
+/**
+ * Allocates a physical memory page and maps it to a virtual address
+ * 
+ * This function allocates a single physical memory page and establishes a 
+ * mapping between the specified virtual memory address and the allocated physical page.
+ * The mapping is created in the current virtual memory space with the specified access permissions.
+ * 
+ * @param vma           virtual memory address to be mapped. Must be page aligned and well-formed for the current paging scheme.
+ * @param rwxug_flags   A combination of the access permission flags for the mapping:
+ *                      - PTE_R: Readable
+ *                      - PTE_W: Writable
+ *                      - PTE_E: Executable
+ *                      - PTE_U: User-Accessible 
+ *                      - PTE_G: Global
+ * 
+ * @return - A pointer to the virtual memory address if successful.
+ *         - NULL if the allocation or mapping fails
+ */
+void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
+    // Ensure virtual address is well-formed and page-aligned
+    if(!wellformed_vma(vma) || !aligned_addr(vma, PAGE_SIZE)){
+        return NULL;
+    }
+
+    // Allocate physical page
+    void *physical_page = memory_alloc_page();
+    if(!physical_page) {
+        panic("Out of physical memory!");
+        return NULL;
+    }
+
+    // Traverse or create page tables for the virtual address
+    struct pte *pte = walk_pt(active_space_root(), vma, 1);
+    if (!pte) {
+        memory_free_page(physical_page);
+        return NULL;
+    }
+
+    // Set up the leaf PTE to point to the allocated physical page
+    *pte = leaf_pte(physical_page, rwxug_flags);
+
+    // Flush TLB to ensure new mapping is recognized
+    sfence_vma();
+    
+    // Return mapped virtual address
+    return (void *) vma;
+}
+
+void memory_handle_page_fault(const void * vptr){
+    // Ensure vma is well-formed
+    if (!wellformed_vma((uintptr_t)vptr) || !aligned_ptr(vptr, PAGE_SIZE)){
+        console_printf("Page fault at invalid virtual address: %p\n", vptr);
+        panic("Page fault: Address validation failed");
+        return;
+    }
+    
+    // Check if address is within user region
+    if ((uintptr_t)vptr < USER_START_VMA || (uintptr_t)vptr >= USER_END_VMA){
+        console_printf("Page fault, address %p is outside user region\n", vptr);
+        panic("Page fault: Address not in user region");
+        return;
+    }
+
+    void *mapped_address = memory_alloc_and_map_page((uintptr_t)vptr, PTE_R | PTE_W | PTE_U);
+    // Map new page to faulting virtual address with the appropriate permissions
+    if (!mapped_address){
+        console_printf("Failed to map address: %p\n", vptr);
+        panic("Page Fault: Failed to map address");
+        return;
+    }
+
+    // Success!
+    kprintf("Page fault handled: mapped new page for address %p\n", vptr);
+}
+
+int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_flags){
+    // Validate the ptr and len are well-formed
+    if (!wellformed_vma((uintptr_t)vp) || len == 0){
+        return 0;
+    }
+
+    uintptr_t start_vma = (uintptr_t)vp;
+    uintptr_t end_vma = start_vma + len;
+
+    // Traverse all pages within the range [start_vma, end_vma)
+    for(uintptr_t current_vma = start_vma; current_vma < end_vma; current_vma += PAGE_SIZE){
+        // Get the page table entry for the current virtual address
+        struct pte *pte = walk_pt(active_space_root(), current_vma, 0);
+        if (!pte || !(pte->flags & PTE_V)){
+            return 0; // Page is not mapped
+        }
+
+        // Check if the page has the required flags
+        if ((pte->flags & rwxug_flags) != rwxug_flags){
+            return 0; // Required flags are not present 
+        }
+    }
+
+    return 1; // All pages in the range are valid and have the required flags
+}
+
+int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
+    if (!wellformed_vma((uintptr_t)vs)){
+        return 0;
+    }
+
+    uintptr_t current_vma = (uintptr_t)vs;
+    
+    while (1) {
+        // Get PTE for the current virtual address
+        struct pte *pte = walk_pt(active_space_root(), current_vma, 0);
+        if(!pte || !(pte->flags & PTE_V)){
+            return 0; // Page is not mapped
+        }
+
+        // Check if page has required user and readable flags 
+        if((pte->flags & ug_flags) != ug_flags){
+            return 0; // Required flags are not present
+        }
+
+        // Access the current character
+        const char *current_char = (const char *)current_vma;
+        if (*current_char == "\0"){
+            return 1; // Found null terminator, string is valid
+        }
+
+        current_vma++;
+        
+        if(current_vma % PAGE_SIZE == 0){
+            // Moving to next page, repeat checks for new page
+            continue;
+        }
+    }    
+
+    return 0; // Should never reach here.
+}
+
 // helper function
 
 /**
