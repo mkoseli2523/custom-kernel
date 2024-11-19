@@ -587,6 +587,12 @@ void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
 
 
 
+/**
+ * handles page fault for the given virtual address
+ * 
+ * @param vptr  pointer to the faulting virtual address. must be aligned with page size and 
+ *              within the user region
+ */
 
 void memory_handle_page_fault(const void * vptr){
     // Ensure vma is well-formed
@@ -617,10 +623,21 @@ void memory_handle_page_fault(const void * vptr){
 
 
 
+/**
+ * validates a virtual memory range and checks for required permission
+ * 
+ * @param vp            pointer to the start of the virtual memory range
+ * @param len           length of the range in bytes
+ * @param rwxug_flags   flags for the given range
+ * 
+ * @return              returns 0 if the range is valid and has the required flags
+ *                      else returns a negative value
+ */
+
 int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_flags){
     // Validate the ptr and len are well-formed
     if (!wellformed_vma((uintptr_t)vp) || len == 0){
-        return 0;
+        return -1;
     }
 
     uintptr_t start_vma = (uintptr_t)vp;
@@ -631,23 +648,33 @@ int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_fl
         // Get the page table entry for the current virtual address
         struct pte *pte = walk_pt(active_space_root(), current_vma, 0);
         if (!pte || !(pte->flags & PTE_V)){
-            return 0; // Page is not mapped
+            return -1; // Page is not mapped
         }
 
         // Check if the page has the required flags
         if ((pte->flags & rwxug_flags) != rwxug_flags){
-            return 0; // Required flags are not present 
+            return -1; // Required flags are not present 
         }
     }
 
-    return 1; // All pages in the range are valid and have the required flags
+    return 0; // All pages in the range are valid and have the required flags
 }
 
 
 
+/**
+ * validates virtual memory string is well formed and accesible
+ * 
+ * @param vs        pointer to the start of the new virtual memory string
+ * @param ug_flags  flags specifying required permissions for the string
+ * 
+ * @return          returns 0 if the string is valid, has the required flags
+ *                  else returns a negative value
+ */
+
 int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
     if (!wellformed_vma((uintptr_t)vs)){
-        return 0;
+        return -1;
     }
 
     uintptr_t current_vma = (uintptr_t)vs;
@@ -656,18 +683,18 @@ int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
         // Get PTE for the current virtual address
         struct pte *pte = walk_pt(active_space_root(), current_vma, 0);
         if(!pte || !(pte->flags & PTE_V)){
-            return 0; // Page is not mapped
+            return -1; // Page is not mapped
         }
 
         // Check if page has required user and readable flags 
         if((pte->flags & ug_flags) != ug_flags){
-            return 0; // Required flags are not present
+            return -1; // Required flags are not present
         }
 
         // Access the current character
         const char *current_char = (const char *)current_vma;
         if (*current_char == "\0"){
-            return 1; // Found null terminator, string is valid
+            return 0; // Found null terminator, string is valid
         }
 
         current_vma++;
@@ -678,8 +705,10 @@ int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
         }
     }    
 
-    return 0; // Should never reach here.
+    return -1; // Should never reach here.
 }
+
+
 
 // helper function
 
