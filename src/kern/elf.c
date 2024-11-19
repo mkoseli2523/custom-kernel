@@ -102,12 +102,9 @@ int elf_load(struct io_intf *io, void (**entryptr)(void)){
             rwxug_flags |= PTE_U; // User-accessible by default
 
             // Map memory for the segment
-            for (uint64_t offset = 0; offset < phdr.p_memsz; offset += PAGE_SIZE){
-                uintptr_t vaddr = aligned_vaddr + offset;
-                void *page = memory_alloc_and_map_page(vaddr, rwxug_flags);
-                if (!page){
-                    return -10; //failed to allocate memory
-                }
+            void *mapped_range = memory_alloc_and_map_range(aligned_vaddr, aligned_memsz, rwxug_flags);
+            if(!mapped_range) {
+                return -10;
             }
             
             // Load the segment into memory at p_vaddr
