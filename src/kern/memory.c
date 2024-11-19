@@ -248,7 +248,7 @@ void memory_init(void) {
     // this needs the heap_end and RAN_END to be page alligned which heap_end for sure is 
     // uintptr_t aligned_ram_end = round_down_addr((uintptr_t)RAM_END, PAGE_SIZE);
     for(pp = heap_end; pp<RAM_END; pp+=PAGE_SIZE){
-        page = (struct linked_page *)pp;
+        page = (union linked_page *)pp;
         page->next = free_list;
         free_list = page;
     }
@@ -263,7 +263,7 @@ void memory_init(void) {
     memory_initialized = 1;
 }
 
-// rest of the functions go here
+
 
 /**
  * Allocates a zeroed memory page from the free list.
@@ -271,7 +271,7 @@ void memory_init(void) {
  * @return Pointer to the allocated memory page, or NULL on failure.
  */
 void *memory_alloc_page(void) {
-    struct linked_page *page;
+    union linked_page *page;
 
     // Ensure the free list exists
     if (free_list == NULL) {
@@ -291,6 +291,7 @@ void *memory_alloc_page(void) {
 }
 
 
+
 /**
  * Frees a memory page and returns it to the free list.
  * 
@@ -298,8 +299,9 @@ void *memory_alloc_page(void) {
  *           We clear the page and then add it to the back of the free_list.
  *           
  */
+
 void memory_free_page(void * pp){
-    struct linked_page *page;
+    union linked_page *page;
 
     // Ensure the input page is valid and page-aligned
     if ((uintptr_t)pp % PAGE_SIZE != 0 || pp == NULL) {
@@ -311,12 +313,13 @@ void memory_free_page(void * pp){
     memset(pp, 0, PAGE_SIZE);
 
     // Cast the page pointer to the linked_page structure
-    page = (struct linked_page *)pp;
+    page = (union linked_page *)pp;
 
     // Add the page back to the free list
     page->next = free_list;
     free_list = page;
 }
+
 
 
 /**
@@ -328,6 +331,7 @@ void memory_free_page(void * pp){
  * Ensures the virtual address is page-aligned and the corresponding page table entry (PTE) exists and is valid.
  * Updates the PTE with the specified flags and flushes the TLB to reflect the changes.
  */
+
 void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
     struct pte *pte;
 
@@ -338,20 +342,21 @@ void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
     }
 
     // Walk the page table to get the PTE for the virtual address
-    pte = walk_pt(active_root_pt, (uintptr_t)vp, 0); // argument create is 0: we do not want to
+    pte = walk_pt(active_space_root(), (uintptr_t)vp, 0); // argument create is 0: we do not want to
                                                      // create missing tables
     // checks for a valid pte
-    if (pte == NULL || !(*pte & PTE_V)) {
+    if (pte == NULL || !(pte->flags & PTE_V)) {
         panic("pte is null or not valid in memory_set_page_flags");
         return;
     }
 
     // Update the PTE with the new flags
-    *pte = (*pte & ~PTE_FLAGS_MASK) | (rwxug_flags & PTE_FLAGS_MASK);
+    pte->flags = (pte->flags & ~PTE_FLAGS_MASK) | (rwxug_flags & PTE_FLAGS_MASK);
 
     // Flush the TLB to ensure the changes are visible
     sfence_vma();
 }
+
 
 
 /**
@@ -529,6 +534,8 @@ void memory_unmap_and_free_user(void) {
     sfence_vma();
 }
 
+
+
 /**
  * Allocates a physical memory page and maps it to a virtual address
  * 
@@ -547,6 +554,7 @@ void memory_unmap_and_free_user(void) {
  * @return - A pointer to the virtual memory address if successful.
  *         - NULL if the allocation or mapping fails
  */
+
 void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
     // Ensure virtual address is well-formed and page-aligned
     if(!wellformed_vma(vma) || !aligned_addr(vma, PAGE_SIZE)){
@@ -577,6 +585,9 @@ void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
     return (void *) vma;
 }
 
+
+
+
 void memory_handle_page_fault(const void * vptr){
     // Ensure vma is well-formed
     if (!wellformed_vma((uintptr_t)vptr) || !aligned_ptr(vptr, PAGE_SIZE)){
@@ -604,6 +615,8 @@ void memory_handle_page_fault(const void * vptr){
     kprintf("Page fault handled: mapped new page for address %p\n", vptr);
 }
 
+
+
 int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_flags){
     // Validate the ptr and len are well-formed
     if (!wellformed_vma((uintptr_t)vp) || len == 0){
@@ -629,6 +642,8 @@ int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_fl
 
     return 1; // All pages in the range are valid and have the required flags
 }
+
+
 
 int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
     if (!wellformed_vma((uintptr_t)vs)){
