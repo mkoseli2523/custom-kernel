@@ -313,23 +313,26 @@ void memory_handle_page_fault(const void * vptr){
         return;
     }
 
-    // Allocate and map a new page
-    void *new_page = memory_alloc_page();
-    if(!new_page){
-        console_printf("Out of physical memory for address: %p\n", vptr);
-        panic("Page fault: Out of physical memory");
-        return;
-    }
-
+    void *mapped_address = memory_alloc_and_map_page((uintptr_t)vptr, PTE_R | PTE_W | PTE_U);
     // Map new page to faulting virtual address with the appropriate permissions
-    if (!memory_alloc_and_map_page((uintptr_t)vptr, PTE_R | PTE_W | PTE_U)){
+    if (!mapped_address){
         console_printf("Failed to map address: %p\n", vptr);
         panic("Page Fault: Failed to map address");
         return;
     }
 
+    // Success!
     kprintf("Page fault handled: mapped new page for address %p\n", vptr);
 }
+
+int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_flags){
+    
+}
+
+int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
+
+}
+
 // helper function
 
 /**
