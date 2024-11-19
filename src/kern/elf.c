@@ -42,6 +42,8 @@
  *     -7 if seeking to a segment offset fails
  *     -8 if loading a segment fails
  *     -9 if the ELF file is not little-endian
+ *     -10 if there's a memory allocation or stack failure
+ *     -11 if segment overlaps with the stack
  */
 int elf_load(struct io_intf *io, void (**entryptr)(void)){
     Elf64_Ehdr elf_header;
@@ -79,7 +81,7 @@ int elf_load(struct io_intf *io, void (**entryptr)(void)){
         }
 
         if ((phdr.p_vaddr + phdr.p_memsz) > USER_STACK_VMA) {
-            return -12; // Segment overlaps with the stack
+            return -11; // Segment overlaps with the stack
         }
         
         if (phdr.p_type == PT_LOAD) {
@@ -88,10 +90,21 @@ int elf_load(struct io_intf *io, void (**entryptr)(void)){
                 return -6; // Segment is out of bounds
             }
 
+            // Align virtual address and memory size
+            uintptr_t aligned_vaddr = round_down_addr(phdr.p_vaddr, PAGE_SIZE);
+            size_t aligned_memsz = round_up_size(phdr.p_memsz, PAGE_SIZE);
+
+            // Convert program header flags (p_flags) to PTE Flags
+            uint8_t rwxug_flags = 0;
+            if (phdr.p_flags & PF_R) rwxug_flags |= PTE_R;
+            if (phdr.p_flags & PF_W) rwxug_flags |= PTE_W;
+            if (phdr.p_flags & PF_X) rwxug_flags |= PTE_X;
+            rwxug_flags |= PTE_U; // User-accessible by default
+
             // Map memory for the segment
             for (uint64_t offset = 0; offset < phdr.p_memsz; offset += PAGE_SIZE){
-                void *vaddr = (void *)(phdr.p_vaddr + offset);
-                void *page = memory_alloc_and_map_page((uintptr_t)vaddr, PTE_R | PTE_W | PTE_X | PTE_U);
+                uintptr_t vaddr = aligned_vaddr + offset;
+                void *page = memory_alloc_and_map_page(vaddr, rwxug_flags);
                 if (!page){
                     return -10; //failed to allocate memory
                 }
@@ -110,6 +123,9 @@ int elf_load(struct io_intf *io, void (**entryptr)(void)){
             if (phdr.p_memsz > phdr.p_filesz) {
                 memset((void *)(phdr.p_vaddr + phdr.p_filesz), 0, phdr.p_memsz - phdr.p_filesz);
             }
+
+            // Set range flags for the segment 
+            memory_set_range_flags((const void *)aligned_vaddr, aligned_memsz, rwxug_flags);
         }
     }
 
