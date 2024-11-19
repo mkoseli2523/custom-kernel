@@ -12,7 +12,11 @@
 #define ELFMAG1     'E'
 #define ELFMAG2     'L'
 #define ELFMAG3     'F'
-#define PT_LOAD     1  // Program header type for loadable segments
+#define PT_LOAD     1   // Program header type for loadable segments
+#define PF_X        0x1 // Execute permission
+#define PF_W        0x2 // Write permission
+#define PF_R        0x4 // Read permission
+
 
 #define RV64_MACHINE 243
 #define ELFDATA2LSB 1
