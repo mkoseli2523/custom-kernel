@@ -122,6 +122,15 @@ static struct pte main_pt0_0x80000[PTE_CNT]
 // EXPORTED FUNCTION DEFINITIONS
 // 
 
+
+/**
+ * Initializes the memory subsystem, including page tables, heap allocator, 
+ * and free page pool.
+ * 
+ * Sets up the direct memory mapping for the kernel, configures the heap and 
+ * page allocator, and enables paging. Also ensures the kernel image fits within 
+ * a 2MB megapage and establishes the free list for available memory pages.
+ */
 void memory_init(void) {
     const void * const text_start = _kimg_text_start;
     const void * const text_end = _kimg_text_end;
@@ -234,6 +243,17 @@ void memory_init(void) {
     // TODO: FIXME implement this (must work with your implementation of
     // memory_alloc_page and memory_free_page).
     
+    // put free pages on the free pages list by going through the entire space avaliable,
+    // assigning linked pages and updating the head of the list - free_list
+    // this needs the heap_end and RAN_END to be page alligned which heap_end for sure is 
+    // uintptr_t aligned_ram_end = round_down_addr((uintptr_t)RAM_END, PAGE_SIZE);
+    for(pp = heap_end; pp<RAM_END; pp+=PAGE_SIZE){
+        page = (struct linked_page *)pp;
+        page->next = free_list;
+        free_list = page;
+    }
+
+
     // Allow supervisor to access user memory. We could be more precise by only
     // enabling it when we are accessing user memory, and disable it at other
     // times to catch bugs.
@@ -244,6 +264,95 @@ void memory_init(void) {
 }
 
 // rest of the functions go here
+
+/**
+ * Allocates a zeroed memory page from the free list.
+ * 
+ * @return Pointer to the allocated memory page, or NULL on failure.
+ */
+void *memory_alloc_page(void) {
+    struct linked_page *page;
+
+    // Ensure the free list exists
+    if (free_list == NULL) {
+        panic("no free pages in free_list: memory_alloc_page");
+        return NULL;
+    }
+
+    // Remove the first page from the free list
+    page = free_list;
+    free_list = free_list->next;
+
+    // Zero out the page
+    memset((void *)page, 0, PAGE_SIZE);
+
+    // Return the address of direct-mapped page
+    return (void *)page;
+}
+
+
+/**
+ * Frees a memory page and returns it to the free list.
+ * 
+ * @param pp Input pointer to the memory page to be freed. Must be page-aligned and non-NULL.
+ *           We clear the page and then add it to the back of the free_list.
+ *           
+ */
+void memory_free_page(void * pp){
+    struct linked_page *page;
+
+    // Ensure the input page is valid and page-aligned
+    if ((uintptr_t)pp % PAGE_SIZE != 0 || pp == NULL) {
+        panic("Invalid page address provided in memory_free_page");
+        return;
+    }
+
+    // Zero out the page to prevent stale data
+    memset(pp, 0, PAGE_SIZE);
+
+    // Cast the page pointer to the linked_page structure
+    page = (struct linked_page *)pp;
+
+    // Add the page back to the free list
+    page->next = free_list;
+    free_list = page;
+}
+
+
+/**
+ * Sets the access flags for a specific memory page.
+ * 
+ * @param vp         Pointer to the virtual address of the memory page. 
+ * @param rwxug_flags Access flags for the page. The flags are masked to ensure only valid bits are set.
+ * 
+ * Ensures the virtual address is page-aligned and the corresponding page table entry (PTE) exists and is valid.
+ * Updates the PTE with the specified flags and flushes the TLB to reflect the changes.
+ */
+void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
+    struct pte *pte;
+
+    // Ensure the virtual pointer is page-aligned
+    if ((uintptr_t)vp % PAGE_SIZE != 0) {
+        panic("vp not page alligned in memory_set_page_flags");
+        return;
+    }
+
+    // Walk the page table to get the PTE for the virtual address
+    pte = walk_pt(active_root_pt, (uintptr_t)vp, 0); // argument create is 0: we do not want to
+                                                     // create missing tables
+    // checks for a valid pte
+    if (pte == NULL || !(*pte & PTE_V)) {
+        panic("pte is null or not valid in memory_set_page_flags");
+        return;
+    }
+
+    // Update the PTE with the new flags
+    *pte = (*pte & ~PTE_FLAGS_MASK) | (rwxug_flags & PTE_FLAGS_MASK);
+
+    // Flush the TLB to ensure the changes are visible
+    sfence_vma();
+}
+
 
 /**
  * switches to the main memory space, and reclaims the previous mem space
