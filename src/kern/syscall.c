@@ -8,7 +8,7 @@
 #include "memory.h"
 #include "process.h"
 #include "fs.h"
-#include "excp.c"
+#include "trap.h"
 
 static int sysexit(void){
     process_exit();
