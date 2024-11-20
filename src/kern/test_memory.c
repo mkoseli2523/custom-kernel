@@ -87,6 +87,8 @@ void test_memory_space_reclaim() {
     assert(secondary_root_pt != NULL);
     memset(secondary_root_pt, 0, PAGE_SIZE);
 
+    console_printf("root pte *: 0x%x\n", secondary_root_pt);
+
     // Map some pages in the secondary memory space
     uintptr_t test_vaddr1 = 0x400000; // Arbitrary user-space virtual address
     uintptr_t test_vaddr2 = 0x401000; // Next page
@@ -94,6 +96,8 @@ void test_memory_space_reclaim() {
     // Map pages in the secondary memory space
     struct pte *pte1 = walk_pt(secondary_root_pt, test_vaddr1, 1);
     assert(pte1 != NULL);
+
+    console_printf("pte1 *: 0x%x\n", pte1);
 
     void *page1 = memory_alloc_page();
     assert(page1 != NULL);
@@ -104,6 +108,8 @@ void test_memory_space_reclaim() {
     struct pte *pte2 = walk_pt(secondary_root_pt, test_vaddr2, 1);
     assert(pte2 != NULL);
 
+    console_printf("pte2 *: 0x%x\n", pte2);
+
     void *page2 = memory_alloc_page();
     assert(page2 != NULL);
     uintptr_t pa2 = (uintptr_t) page2;
@@ -112,10 +118,10 @@ void test_memory_space_reclaim() {
 
     // Switch to the secondary memory space
     // Construct the SATP value for the secondary memory space
-    uintptr_t secondary_satp = (8ULL << 60) | ((secondary_root_pt->ppn >> 12) & 0xFFFFFFFFFFFULL);
+    uintptr_t secondary_satp = (8ULL << 60) | (0xFFFF << 44) | (secondary_root_pt->ppn & 0xFFFFFFFFFFFULL);
     // Set the SATP register to switch to the secondary memory space
     csrw_satp(secondary_satp);
-    asm volatile("sfence.vma" ::: "memory");
+    asm inline ("sfence.vma" ::: "memory");
 
     // Verify that we're in the secondary memory space
     uintptr_t current_satp = csrr_satp();

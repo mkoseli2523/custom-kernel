@@ -739,33 +739,31 @@ struct pte * walk_pt(struct pte* root, uintptr_t vma, int create) {
 
     // walk down the page table starting from the highest level (ie level 2)
     for (int level = 2; level > 0; level--) {
-        // grab the page table entry of the next level
-        struct pte* pte = (struct pte*)((uint64_t)pt[vpn[level]].ppn << PAGE_ORDER);
-
         // check if the entry is valid
-        if (pte && pte->flags & PTE_V) {
+        if (&pt[vpn[level]] && pt[vpn[level]].flags & PTE_V) {
+            // grab the page table entry of the next level
+            struct pte* pte = (struct pte*)((uint64_t)pt[vpn[level]].ppn << PAGE_ORDER);
+
             // if pte has flags r=0, w=0, and x=0, pte refers to next level
-            if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
+            if (pt[vpn[level]].flags & (PTE_R | PTE_W | PTE_X)) {
                 // leaf pte encountered at a non-leaf level, return
                 return NULL;
             } else {
                 // pte is valid pointing to the next level
-                // grab the physical address from the pte
-                uintptr_t pa = (uintptr_t)(pte->ppn << PAGE_ORDER);
-
-                // convert it to va and have our pt pointing to it
-                pt = (struct pte*)pa;
+                // make pt point to pte
+                pt = pte;
             }
         } else if (create) {
             // entry isn't valid create the entry
             // allocate a new page table
             struct pte* new_pt = (struct pte*)memory_alloc_page(); // should panic if no pages available
 
+            console_printf("new pt address: 0x%x\n", new_pt);
+
             pt[vpn[level]].ppn = (uint64_t)new_pt >> PAGE_ORDER;
+            pt[vpn[level]].flags = PTE_V;
             
             // set up the pte to point to the new page table
-            pte = &pt[vpn[level]];
-            pte->flags = PTE_V; // this might need to change
             pt = new_pt;
         } else {
             // entry isn't valid return NULL
