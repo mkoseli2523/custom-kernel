@@ -284,7 +284,7 @@ void *memory_alloc_page(void) {
     free_list = free_list->next;
 
     // Zero out the page
-    memset((void *)page, 0, PAGE_SIZE);
+    memset((void *)page, 0, PAGE_SIZE * sizeof(uint8_t));
 
     // Return the address of direct-mapped page
     return (void *)page;
