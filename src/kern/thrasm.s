@@ -118,7 +118,37 @@ _thread_finish_jump:
         # located at the base of the stack, which contains the current thread
         # pointer and serves as our starting stack pointer.
 
-        # TODO: FIXME your code here
+        # sret returns to lower privileged mode with the following effects:
+        # (a) sstatus sie bit will be set to SPIE
+        # (b) sstatus spie bit will be set to 1
+        # (c) sstatus spp bits will determine execution privilege mode after sret
+        # (d) sstatus spp bits will be set to user mode
+        # (e) pc reg is set with teh value of sepc
+        
+        # set up sscratch to point to stack_anchor
+        csrw sscratch, a0
+
+        # set up sstatus
+        # read sstatus into temp register
+        csrr t0, sstatus
+
+        # clear spp bit to set the previous privilege mode to user mode
+        li t1, ~(1 << 8)
+        and t0, t0, t1
+
+        # set spie bit to 1 to enable interrupts after sret
+        ori t0, t0, (1 << 5)
+        
+        # write the modified sstatus back 
+        ccsrw sstatus, t0
+
+        # set sepc to upc, ie the address where the execution will continue after sret
+        csrw sepc, a2
+
+        # set stack pointer to the user stack
+        mv sp, a1
+
+        sret
 
 
 # Statically allocated stack for the idle thread.
