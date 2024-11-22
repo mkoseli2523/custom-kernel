@@ -55,7 +55,15 @@ void smode_excp_handler(unsigned int code, struct trap_frame * tfr) {
 
 void umode_excp_handler(unsigned int code, struct trap_frame * tfr) {
     switch (code) {
-    // TODO: FIXME dispatch to various U mode exception handlers
+    // case 12: 
+    //     memory_handle_page_fault((void *)tfr->sepc);
+    //     break;
+    // case 13:
+    //     memory_handle_page_fault((void *)tfr->sepc);
+    //     break;
+    case 15: // store/amo page fault
+        memory_handle_page_fault((void *)csrr_stval());
+        break;
     default:
         default_excp_handler(code, tfr);
         break;

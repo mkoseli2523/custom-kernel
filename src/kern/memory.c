@@ -337,7 +337,7 @@ void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
 
     // Ensure the virtual pointer is page-aligned
     if ((uintptr_t)vp % PAGE_SIZE != 0) {
-        panic("vp not page alligned in memory_set_page_flags");
+        kprintf("vp not page alligned in memory_set_page_flags");
         return;
     }
 
@@ -346,12 +346,12 @@ void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
                                                      // create missing tables
     // checks for a valid pte
     if (pte == NULL || !(pte->flags & PTE_V)) {
-        panic("pte is null or not valid in memory_set_page_flags");
+        kprintf("pte is null or not valid in memory_set_page_flags");
         return;
     }
 
     // Update the PTE with the new flags
-    pte->flags = (pte->flags & ~PTE_FLAGS_MASK) | (rwxug_flags & PTE_FLAGS_MASK);
+    pte->flags = (rwxug_flags & PTE_FLAGS_MASK);
 
     // Flush the TLB to ensure the changes are visible
     sfence_vma();
@@ -399,7 +399,7 @@ void memory_space_reclaim(void) {
         if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
             // free the phyical page
             uintptr_t pa = (uintptr_t)(pte->ppn) << 12;
-            memory_free_page(pa);
+            memory_free_page((void *)pa);
 
             // invalidate the pte
             memset(pte, 0, sizeof(struct pte));
@@ -449,7 +449,7 @@ void * memory_alloc_and_map_range (uintptr_t vma, size_t size, uint_fast8_t rwxu
                 uintptr_t rollback_vma = start_vma + i * page_size;
 
                 // unmap the page and free the physical memory
-                memory_free_page(rollback_vma);
+                memory_free_page((void *)rollback_vma);
             }
 
             kprintf("something went wrong when allocating a page, rolling back each allocated page\n");
@@ -475,7 +475,7 @@ void * memory_alloc_and_map_range (uintptr_t vma, size_t size, uint_fast8_t rwxu
  */
 
 void memory_set_range_flags (const void * vp, size_t size, uint_fast8_t rwxug_flags) {
-    uintptr_t start_addr = vp;
+    uintptr_t start_addr = (uintptr_t) vp;
     uintptr_t end_addr = start_addr + size;
     size_t page_size = PAGE_SIZE;
 
@@ -597,14 +597,14 @@ void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
 void memory_handle_page_fault(const void * vptr){
     // Ensure vma is well-formed
     if (!wellformed_vma((uintptr_t)vptr) || !aligned_ptr(vptr, PAGE_SIZE)){
-        console_printf("Page fault at invalid virtual address: %p\n", vptr);
+        kprintf("Page fault at invalid virtual address: %p\n", vptr);
         panic("Page fault: Address validation failed");
         return;
     }
     
     // Check if address is within user region
     if ((uintptr_t)vptr < USER_START_VMA || (uintptr_t)vptr >= USER_END_VMA){
-        console_printf("Page fault, address %p is outside user region\n", vptr);
+        kprintf("Page fault, address %p is outside user region\n", vptr);
         panic("Page fault: Address not in user region");
         return;
     }
@@ -612,7 +612,7 @@ void memory_handle_page_fault(const void * vptr){
     void *mapped_address = memory_alloc_and_map_page((uintptr_t)vptr, PTE_R | PTE_W | PTE_U);
     // Map new page to faulting virtual address with the appropriate permissions
     if (!mapped_address){
-        console_printf("Failed to map address: %p\n", vptr);
+        kprintf("Failed to map address: %p\n", vptr);
         panic("Page Fault: Failed to map address");
         return;
     }
@@ -642,6 +642,10 @@ int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_fl
 
     uintptr_t start_vma = (uintptr_t)vp;
     uintptr_t end_vma = start_vma + len;
+
+    // make sure the start and end addresses are page aligned
+    round_down_addr(start_vma, PAGE_SIZE);
+    round_up_addr(end_vma, PAGE_SIZE);
 
     // Traverse all pages within the range [start_vma, end_vma)
     for(uintptr_t current_vma = start_vma; current_vma < end_vma; current_vma += PAGE_SIZE){
@@ -693,7 +697,7 @@ int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
 
         // Access the current character
         const char *current_char = (const char *)current_vma;
-        if (*current_char == "\0"){
+        if (*current_char == '\0'){
             return 0; // Found null terminator, string is valid
         }
 
@@ -739,34 +743,31 @@ struct pte * walk_pt(struct pte* root, uintptr_t vma, int create) {
 
     // walk down the page table starting from the highest level (ie level 2)
     for (int level = 2; level > 0; level--) {
-        // grab the page table entry of the next level
-        struct pte* pte = &pt[vpn[level]];
-
         // check if the entry is valid
-        if (pte->flags & PTE_V) {
+        if (&pt[vpn[level]] && pt[vpn[level]].flags & PTE_V) {
+            // grab the page table entry of the next level
+            struct pte* pte = (struct pte*)((uint64_t)pt[vpn[level]].ppn << PAGE_ORDER);
+
             // if pte has flags r=0, w=0, and x=0, pte refers to next level
-            if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
+            if (pt[vpn[level]].flags & (PTE_R | PTE_W | PTE_X)) {
                 // leaf pte encountered at a non-leaf level, return
                 return NULL;
             } else {
                 // pte is valid pointing to the next level
-                // grab the physical address from the pte
-                uintptr_t pa = (uintptr_t)(pte->ppn << PAGE_ORDER);
-
-                // convert it to va and have our pt pointing to it
-                pt = (struct pte*)pa;
+                // make pt point to pte
+                pt = pte;
             }
         } else if (create) {
             // entry isn't valid create the entry
             // allocate a new page table
             struct pte* new_pt = (struct pte*)memory_alloc_page(); // should panic if no pages available
 
-            // get the physical address of the new page table
-            uintptr_t pa = (new_pt->ppn << 12) | (vma & 0xFFF);
+            console_printf("new pt address: 0x%x\n", new_pt);
+
+            pt[vpn[level]].ppn = (uint64_t)new_pt >> PAGE_ORDER;
+            pt[vpn[level]].flags = PTE_V;
             
             // set up the pte to point to the new page table
-            pte->ppn = pa >> 12;
-            pte->flags = PTE_V; // this might need to change
             pt = new_pt;
         } else {
             // entry isn't valid return NULL

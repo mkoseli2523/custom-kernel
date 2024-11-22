@@ -167,6 +167,10 @@ extern int memory_validate_vstr (
 
 extern void memory_handle_page_fault(const void * vptr);
 
+// helper functions needed for testing
+
+struct pte * walk_pt(struct pte* root, uintptr_t vma, int create);
+
 // INLINE FUNCTION DEFINITIONS
 //
 

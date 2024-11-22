@@ -27,7 +27,9 @@ CORE_OBJS = \
 	vioblk.o \
 	console.o \
 	excp.o \
-	memory.o
+	memory.o \
+	kfs.o \
+	vioblk.o 
 	# Add more object files here
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
@@ -42,6 +44,7 @@ QEMUOPTS += -serial mon:stdio
 QEMUOPTS += -drive file=kfs.raw,id=blk0,if=none,format=raw
 QEMUOPTS += -device virtio-blk-device,drive=blk0
 QEMUOPTS += -serial pty
+QEMUOPTS += -monitor pty
 
 # try to generate a unique GDB port
 GDBPORT = $(shell expr `id -u` % 5000 + 25000)
@@ -65,6 +68,16 @@ clean:
 	if [ -f companion.o ]; then cp companion.o companion.o.save; fi
 	rm -rf *.o *.elf *.asm
 	if [ -f companion.o.save ]; then mv companion.o.save companion.o; fi
+
+# additional test cases
+test_memory.elf: $(CORE_OBJS) test_memory.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_memory: test_memory.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_memory: test_memory.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 # This will load the trek file into your kernel memory, via kernel.ld
 # `mkcomp.sh`, as well as the documentation, contain discussion

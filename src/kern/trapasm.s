@@ -151,26 +151,61 @@ _trap_entry_from_umode:
         # stack pointer. We start by allocating a trap frame and saving t6
         # there, so we can use it as a temporary register.
 
+        
+        # load the address of the thread stack anchor into sp
+        csrr sp, sscratch
 
-        # TODO: FIXME your code here
+        # allocate space for the trap frame
+        addi sp, sp, -34*8
 
-        # We're now in S mode, so update our trap handler address to
-        # _trap_entry_from_smode.
+        # save t6 and original sp to trap frame
+        sd      t6, 31*8(sp)    # save t6 (x31) in trap frame
+        addi    t6, sp, 34*8    # save original sp
+        sd      t6, 2*8(sp)     # 
 
-        # TODO: FIXME your code here
+        save_gprs_except_t6_and_sp
+        save_sstatus_and_sepc
+
+        # update t6 to point to _trap_entry_from_smode
+        la t6, _trap_entry_from_smode
+
+        # update the stvec to point to _trap_entry_from_smode
+        csrw stvec, t6
+
+        call trap_umode_cont
 
         # U mode handlers return here because the call instruction above places
         # this address in /ra/ before we jump to exception or trap handler.
         # We're returning to U mode, so restore _smode_trap_entry_from_umode as
         # trap handler.
+        
+        # restore stvec to point to trap entry from umode
+        la t6, _trap_entry_from_umode
+        csrw stvec, t6
 
-        # TODO: FIXME your code here
+        restore_sstatus_and_sepc
+        restore_gprs_except_t6_and_sp
+
+        ld      t6, 31*8(sp)
+        ld      sp, 2*8(sp)
+
+        # restore the sp
+        addi sp, sp, 34*8       
+
+        sret
 
         # Execution of trap entry continues here. Jump to handlers.
 
 trap_umode_cont:
+        csrr    a0, scause      # a0 contains "exception code"
+        mv      a1, sp          # a1 contains trap frame pointer
         
-        # TODO: FIXME your code here
+        bgez    a0, umode_excp_handler  # in excp.c
+        
+        slli    a0, a0, 1               # clear msb
+        srli    a0, a0, 1               #
+
+        j intr_handler
 
         .global _mmode_trap_entry
         .type   _mmode_trap_entry, @function
