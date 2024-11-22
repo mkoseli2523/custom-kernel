@@ -337,7 +337,7 @@ void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
 
     // Ensure the virtual pointer is page-aligned
     if ((uintptr_t)vp % PAGE_SIZE != 0) {
-        panic("vp not page alligned in memory_set_page_flags");
+        kprintf("vp not page alligned in memory_set_page_flags");
         return;
     }
 
@@ -346,12 +346,12 @@ void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
                                                      // create missing tables
     // checks for a valid pte
     if (pte == NULL || !(pte->flags & PTE_V)) {
-        panic("pte is null or not valid in memory_set_page_flags");
+        kprintf("pte is null or not valid in memory_set_page_flags");
         return;
     }
 
     // Update the PTE with the new flags
-    pte->flags = (pte->flags & ~PTE_FLAGS_MASK) | (rwxug_flags & PTE_FLAGS_MASK);
+    pte->flags = (rwxug_flags & PTE_FLAGS_MASK);
 
     // Flush the TLB to ensure the changes are visible
     sfence_vma();
@@ -597,14 +597,14 @@ void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
 void memory_handle_page_fault(const void * vptr){
     // Ensure vma is well-formed
     if (!wellformed_vma((uintptr_t)vptr) || !aligned_ptr(vptr, PAGE_SIZE)){
-        console_printf("Page fault at invalid virtual address: %p\n", vptr);
+        kprintf("Page fault at invalid virtual address: %p\n", vptr);
         panic("Page fault: Address validation failed");
         return;
     }
     
     // Check if address is within user region
     if ((uintptr_t)vptr < USER_START_VMA || (uintptr_t)vptr >= USER_END_VMA){
-        console_printf("Page fault, address %p is outside user region\n", vptr);
+        kprintf("Page fault, address %p is outside user region\n", vptr);
         panic("Page fault: Address not in user region");
         return;
     }
@@ -612,7 +612,7 @@ void memory_handle_page_fault(const void * vptr){
     void *mapped_address = memory_alloc_and_map_page((uintptr_t)vptr, PTE_R | PTE_W | PTE_U);
     // Map new page to faulting virtual address with the appropriate permissions
     if (!mapped_address){
-        console_printf("Failed to map address: %p\n", vptr);
+        kprintf("Failed to map address: %p\n", vptr);
         panic("Page Fault: Failed to map address");
         return;
     }
@@ -642,6 +642,10 @@ int memory_validate_vptr_len (const void * vp, size_t len, uint_fast8_t rwxug_fl
 
     uintptr_t start_vma = (uintptr_t)vp;
     uintptr_t end_vma = start_vma + len;
+
+    // make sure the start and end addresses are page aligned
+    round_down_addr(start_vma, PAGE_SIZE);
+    round_up_addr(end_vma, PAGE_SIZE);
 
     // Traverse all pages within the range [start_vma, end_vma)
     for(uintptr_t current_vma = start_vma; current_vma < end_vma; current_vma += PAGE_SIZE){
