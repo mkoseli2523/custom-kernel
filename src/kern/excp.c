@@ -64,6 +64,9 @@ void umode_excp_handler(unsigned int code, struct trap_frame * tfr) {
     case 15: // store/amo page fault
         memory_handle_page_fault((void *)csrr_stval());
         break;
+    case 8:
+        syscall_handler(tfr); // Pass trap frame to syscall handler
+        break;
     default:
         default_excp_handler(code, tfr);
         break;
