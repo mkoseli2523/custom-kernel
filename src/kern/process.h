@@ -11,6 +11,9 @@
 #include "config.h"
 #include "io.h"
 #include "thread.h"
+#include "memory.h"
+#include "elf.h"
+#include "console.h"
 #include <stdint.h>
 
 // EXPORTED TYPE DEFINITIONS
@@ -41,6 +44,11 @@ extern void process_terminate(int pid);
 
 static inline struct process * current_process(void);
 static inline int current_pid(void);
+
+// these functions are defined in thrams.s
+extern void __attribute__ ((noreturn)) _thread_finish_jump (
+        struct thread_stack_anchor * stack_anchor,
+        uintptr_t usp, uintptr_t upc, ...);
 
 // INLINE FUNCTION DEFINITIONS
 // 
