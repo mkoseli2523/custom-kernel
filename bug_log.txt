@@ -1,0 +1,22 @@
+=== CP1 Bugs ===
+
+== Bug #1: ==
+    Files Associated: vioblk.c
+    Description: Vioblk read/write not actually reading/writing despite data being properly transmitted to the device buffer.
+    Fix: The error was due to having wrong descriptor flags, for the data descriptor specifically. The error was fixed shortly after
+    setting the descriptor to point to itself within the read/write request loops in vioblk_read/violbk_write functions, rather than
+    pointing to the next descriptor, the way we set it in vioblk_attach.
+
+== Bug #2: ==
+    Files Associated: kfs.c
+    Description: Filesystem read/write not reading/writing properly
+    Fix: The error was due to trying to directly copy the buffer contents, or copy the buffer into device buffer directly, rather than
+    initializing the device buffer with the contents of the buffer passed into read/write. The issue was fixed after using memset() 
+    function rather than having the device buffer point to the read/write buffer.
+
+=== CP2 Bugs === 
+
+
+
+
+=== CP3 Bugs ===
