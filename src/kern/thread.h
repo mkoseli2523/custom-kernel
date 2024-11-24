@@ -33,6 +33,9 @@ extern char thrmgr_initialized;
 // EXPORTED FUNCTION DECLARATIONS
 //
 
+// function to get the current thread
+extern struct thread * cur_thread(void);
+
 extern void thread_init(void);
 
 // int running_thread(void)

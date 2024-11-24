@@ -14,7 +14,9 @@
 #include "memory.h"
 #include "elf.h"
 #include "console.h"
+#include "halt.h"
 #include <stdint.h>
+#include <string.h>
 
 // EXPORTED TYPE DEFINITIONS
 //

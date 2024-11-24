@@ -18,6 +18,16 @@
 #include <stdint.h>
 #include <string.h> 
 
+// functions needed by elf_laod
+
+static inline uintptr_t round_down_addr(uintptr_t addr, size_t blksz) {
+    return (addr / blksz * blksz);
+}
+
+static inline size_t round_up_size(size_t n, size_t blksz) {
+    return (n + blksz-1) / blksz * blksz;
+}
+
 /** 
  * elf_load - Load an ELF executable from an I/O interface.
  * 

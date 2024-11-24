@@ -79,13 +79,13 @@ extern void memory_space_reclaim(void);
 // uintptr_t active_memory_space(void)
 // Returns the memory space tag of the current memory space.
 
-static inline uintptr_t active_memory_space(void);
+extern uintptr_t active_memory_space(void);
 
 // uintptr_t memory_space_switch(uintptr_t mtag)
 // Switches to another memory space and returns the memory space tag of the
 // previously active memory space.
 
-static inline uintptr_t memory_space_switch(uintptr_t mtag);
+extern uintptr_t memory_space_switch(uintptr_t mtag);
 
 // void * memory_alloc_page(void)
 // Allocates a physical page of memory. Returns a pointer to the direct-mapped
@@ -173,13 +173,5 @@ struct pte * walk_pt(struct pte* root, uintptr_t vma, int create);
 
 // INLINE FUNCTION DEFINITIONS
 //
-
-static inline uintptr_t active_memory_space(void) {
-    return csrr_satp();
-}
-
-static inline uintptr_t memory_space_switch(uintptr_t mtag) {
-    return csrrw_satp(mtag);
-}
 
 #endif // _MEMORY_H_

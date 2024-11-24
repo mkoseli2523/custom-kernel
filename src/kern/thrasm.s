@@ -140,7 +140,7 @@ _thread_finish_jump:
         ori t0, t0, (1 << 5)
         
         # write the modified sstatus back 
-        ccsrw sstatus, t0
+        csrw sstatus, t0
 
         # set sepc to upc, ie the address where the execution will continue after sret
         csrw sepc, a2

@@ -94,10 +94,9 @@ void procmgr_init(void) {
 
 int process_exec(struct io_intf * exeio) {
     int result;
-    void* entry_point;
+    void (*entry_point)(void);
     struct thread_stack_anchor* stack_anchor;
-    uintptr_t usp, old_mtag, new_mtag;
-    struct pt* new_root_pt;
+    uintptr_t usp;
 
     // (a) unmap any virtual memory mappings begongin to other user processes
     memory_unmap_and_free_user();
@@ -113,7 +112,7 @@ int process_exec(struct io_intf * exeio) {
     }
 
     // ensure entry point is within the user mem space
-    if (entry_point < USER_START_VMA || entry_point >= USER_END_VMA) {
+    if ((uintptr_t) entry_point < USER_START_VMA || (uintptr_t) entry_point >= USER_END_VMA) {
         console_printf("process_exec: start address is not within the valid range\n");
         return -1;
     }
@@ -134,10 +133,14 @@ int process_exec(struct io_intf * exeio) {
     asm inline ("sfence.vma" ::: "memory");
     
     // set up stack anchor
-    stack_anchor->thread = running_thread();
+    // copied from thread_spawn
+    void * stack_page = memory_alloc_page();
+    stack_anchor = stack_page + PAGE_SIZE - sizeof(struct thread_stack_anchor);
+    stack_anchor->thread = cur_thread();
+    stack_anchor->reserved = 0;
 
     // call thread_jump_user (in thrasm.s) to finish switching to umode
-    _thread_finish_jump(stack_anchor, usp, entry_point);
+    _thread_finish_jump(stack_anchor, usp, (uintptr_t)entry_point);
 
     // this line should not execute
     panic("process_exec: returned from user mode execution\n");

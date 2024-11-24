@@ -744,7 +744,7 @@ struct pte * walk_pt(struct pte* root, uintptr_t vma, int create) {
     // walk down the page table starting from the highest level (ie level 2)
     for (int level = 2; level > 0; level--) {
         // check if the entry is valid
-        if (&pt[vpn[level]] && pt[vpn[level]].flags & PTE_V) {
+        if (&pt[vpn[level]] != NULL && pt[vpn[level]].flags & PTE_V) {
             // grab the page table entry of the next level
             struct pte* pte = (struct pte*)((uint64_t)pt[vpn[level]].ppn << PAGE_ORDER);
 
@@ -807,6 +807,18 @@ static inline int aligned_size(size_t size, size_t blksz) {
 
 static inline uintptr_t active_space_mtag(void) {
     return csrr_satp();
+}
+
+uintptr_t active_memory_space(void) {
+    return active_space_mtag();
+}
+
+uintptr_t memory_space_switch(uintptr_t mtag) {
+    uintptr_t old_mtag = csrrw_satp(mtag);
+
+    sfence_vma();
+
+    return old_mtag;
 }
 
 static inline struct pte * mtag_to_root(uintptr_t mtag) {
