@@ -55,13 +55,10 @@ void smode_excp_handler(unsigned int code, struct trap_frame * tfr) {
 
 void umode_excp_handler(unsigned int code, struct trap_frame * tfr) {
     switch (code) {
-    // case 12: 
-    //     memory_handle_page_fault((void *)tfr->sepc);
-    //     break;
-    // case 13:
-    //     memory_handle_page_fault((void *)tfr->sepc);
-    //     break;
+    case 12: // instruction page fault
+    case 13: // load page fault
     case 15: // store/amo page fault
+        console_printf("page fault in supervisor mode\n");
         memory_handle_page_fault((void *)csrr_stval());
         break;
     case 8:

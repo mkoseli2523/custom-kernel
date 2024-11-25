@@ -103,7 +103,7 @@ int process_exec(struct io_intf * exeio) {
 
     // (b) no need to implement for cp2
 
-    // (c) load teh executable from io interface into memory
+    // (c) load the executable from io interface into memory
     result = elf_load(exeio, &entry_point);
 
     if (result < 0) {

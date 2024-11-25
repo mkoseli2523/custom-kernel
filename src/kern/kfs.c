@@ -76,7 +76,7 @@ char fs_initialized;
 struct boot_block_t boot_block;
 struct file_struct file_structs[FS_MAXOPEN];
 inode_t inode;
-
+data_block_t data_block;
 
 // int fs_mount(struct io_intf * blkio);
 //
@@ -266,7 +266,6 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
     uint64_t inode_offset = FS_BLKSZ + (inode_number * FS_BLKSZ);
 
     // read the inode
-    inode_t inode;
     if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_offset) != 0) {
         return -1; // Error setting position
     }
@@ -302,7 +301,6 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
                                    + block_offset;                        // mem offset
 
         // write to the data block
-        data_block_t data_block;
         if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_offset) != 0) {
             return -6; 
         }
@@ -378,7 +376,6 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
     uint64_t inode_offset = FS_BLKSZ + (inode_number * FS_BLKSZ);
 
     // read the inode
-    inode_t inode;
     if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_offset) != 0) {
         return -1; // Error setting position
     }
@@ -412,7 +409,6 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
                                    + (data_block_num * FS_BLKSZ);         // data block offset
 
         // read the data block
-        data_block_t data_block;
         if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_offset) != 0) {
             return -1; 
         }
