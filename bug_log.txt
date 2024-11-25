@@ -15,8 +15,11 @@
     function rather than having the device buffer point to the read/write buffer.
 
 === CP2 Bugs === 
-
-
+    Bug 1: 
+    Files Associated: kfs.c
+    Description: Encountered stack overflow error
+    Fix: The stack overflow error happened when fs_read and fs_write were allocating two extra pages onto the stack, rather than only 
+    allocating a single page. We fixed this error by making the data buffers global. 
 
 
 === CP3 Bugs ===
