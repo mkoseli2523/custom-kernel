@@ -22,5 +22,17 @@
     Fix: The stack overflow error happened when fs_read and fs_write were allocating two extra pages onto the stack, rather than only 
     allocating a single page. We fixed this error by making the data buffers global. 
 
+== Bug #2: == 
+    Files Associated: elf.c 
+    Description: Write flag was not set in elf.c
+    Fix: The bug happened when we called elf.c and we were not setting the user space pages to always be write-able. We fixed this by 
+    hardcoding the write flag into the rwxug_flags. This ensured that the user space pages were always write-able.
 
+== Bug #3: ==
+    Files Associated: thrasm.s
+    Description: Incorrect privilege mode handling during user mode transition.
+    Fix: In our _thread_finish_jump function, we did not properly set stvec to point to _trap_entry_from_umode, during the transition
+    from supervisor mode to user mode. As a result, exceptions and traps occurring in user mode were incorrectly routed to supervisor-mode 
+    handlers, causing privilege mode violations and kernel panics. Correcting this resolved the privilege issue.
+    
 === CP3 Bugs ===
