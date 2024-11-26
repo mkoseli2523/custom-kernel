@@ -36,6 +36,16 @@
 // CONSTANT DEFINITIONS
 //
 
+struct pte {
+    uint64_t flags:8;
+    uint64_t rsw:2;
+    uint64_t ppn:44;
+    uint64_t reserved:7;
+    uint64_t pbmt:2;
+    uint64_t n:1;
+};
+
+
 #define MEGA_SIZE ((1UL << 9) * PAGE_SIZE) // megapage size
 #define GIGA_SIZE ((1UL << 9) * MEGA_SIZE) // gigapage size
 
@@ -58,6 +68,7 @@ extern uintptr_t main_mtag;
 
 extern void memory_init(void);
 extern char memory_initialized;
+extern struct pte * active_space_root(void);
 
 // uintptr_t memory_space_create(void)
 // Creates a new memory space and makes it the currently active space. Returns a

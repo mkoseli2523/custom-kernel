@@ -176,7 +176,7 @@ _trap_entry_from_umode:
 
         # U mode handlers return here because the call instruction above places
         # this address in /ra/ before we jump to exception or trap handler.
-        # We're returning to U mode, so restore _smode_trap_entry_from_umode as
+        # We're returning to U mode, so restore _trap_entry_from_umode as
         # trap handler.
         
         # restore stvec to point to trap entry from umode

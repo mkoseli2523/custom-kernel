@@ -134,13 +134,12 @@ int process_exec(struct io_intf * exeio) {
     
     // set up stack anchor
     // copied from thread_spawn
-    void * stack_page = memory_alloc_page();
-    stack_anchor = stack_page + PAGE_SIZE - sizeof(struct thread_stack_anchor);
+    stack_anchor = user_stack + PAGE_SIZE - sizeof(struct thread_stack_anchor);
     stack_anchor->thread = cur_thread();
     stack_anchor->reserved = 0;
 
     // call thread_jump_user (in thrasm.s) to finish switching to umode
-    _thread_finish_jump(stack_anchor, usp, (uintptr_t)entry_point);
+    _thread_finish_jump(stack_anchor, usp  - sizeof(struct thread_stack_anchor), (uintptr_t)entry_point);
 
     // this line should not execute
     panic("process_exec: returned from user mode execution\n");

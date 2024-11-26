@@ -7,6 +7,7 @@
 #include "string.h"
 #include "halt.h"
 #include "error.h"
+#include "memory.h"
 
 // constant definitions
 #define FS_BLKSZ      4096
@@ -423,7 +424,7 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
         }
 
         // copy the data to the buffer
-        memcpy((char*)buf + total_bytes_read, data_block.data + block_offset, bytes_this_read);
+        memcpy(buf + total_bytes_read, data_block.data + block_offset, bytes_this_read);
 
         // update counters
         total_bytes_read += bytes_this_read;

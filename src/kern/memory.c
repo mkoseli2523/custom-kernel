@@ -55,15 +55,6 @@ union linked_page {
     char padding[PAGE_SIZE];
 };
 
-struct pte {
-    uint64_t flags:8;
-    uint64_t rsw:2;
-    uint64_t ppn:44;
-    uint64_t reserved:7;
-    uint64_t pbmt:2;
-    uint64_t n:1;
-};
-
 // INTERNAL MACRO DEFINITIONS
 //
 
@@ -84,7 +75,7 @@ static inline int aligned_size(size_t size, size_t blksz);
 
 static inline uintptr_t active_space_mtag(void);
 static inline struct pte * mtag_to_root(uintptr_t mtag);
-static inline struct pte * active_space_root(void);
+struct pte * active_space_root(void);
 
 static inline void * pagenum_to_pageptr(uintptr_t n);
 static inline uintptr_t pageptr_to_pagenum(const void * p);
@@ -351,7 +342,8 @@ void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
     }
 
     // Update the PTE with the new flags
-    pte->flags = (rwxug_flags & PTE_FLAGS_MASK);
+    pte->flags &= ~PTE_FLAGS_MASK;
+    pte->flags |= rwxug_flags;
 
     // Flush the TLB to ensure the changes are visible
     sfence_vma();
@@ -826,7 +818,7 @@ static inline struct pte * mtag_to_root(uintptr_t mtag) {
 }
 
 
-static inline struct pte * active_space_root(void) {
+struct pte * active_space_root(void) {
     return mtag_to_root(active_space_mtag());
 }
 

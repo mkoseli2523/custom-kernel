@@ -112,7 +112,7 @@ int elf_load(struct io_intf *io, void (**entryptr)(void)){
             rwxug_flags |= PTE_U; // User-accessible by default
 
             // Map memory for the segment
-            void *mapped_range = memory_alloc_and_map_range(aligned_vaddr, aligned_memsz, rwxug_flags);
+            void *mapped_range = memory_alloc_and_map_range(aligned_vaddr, aligned_memsz, rwxug_flags | PTE_W);
             if(!mapped_range) {
                 return -10;
             }
@@ -122,7 +122,7 @@ int elf_load(struct io_intf *io, void (**entryptr)(void)){
                 return -7; // Failed to seek to segment offset
             }
             
-            if (ioread_full(io, (void *)phdr.p_vaddr, phdr.p_filesz) != phdr.p_filesz) {
+            if (ioread_full(io, (void *)phdr.p_paddr, phdr.p_filesz) != phdr.p_filesz) {
                 return -8; // Failed to load segment
             }
 
