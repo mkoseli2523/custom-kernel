@@ -153,7 +153,12 @@ _trap_entry_from_umode:
 
         
         # load the address of the thread stack anchor into sp
-        csrr sp, sscratch
+        csrr t6, sscratch
+
+        # load in current thread
+        ld t6, 0(t6)
+
+        ld sp, 13*8(t6)
 
         # allocate space for the trap frame
         addi sp, sp, -34*8
@@ -190,7 +195,9 @@ _trap_entry_from_umode:
         ld      sp, 2*8(sp)
 
         # restore the sp
-        addi sp, sp, 34*8       
+        addi sp, sp, 34*8
+
+        # csrw sscratch, t6 
 
         sret
 
