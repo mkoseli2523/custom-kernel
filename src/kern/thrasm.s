@@ -147,6 +147,9 @@ _thread_finish_jump:
 
         # set stack pointer to the user stack
         mv sp, a1
+        
+        la t6, _trap_entry_from_umode
+        csrw stvec, t6
 
         sret
 
