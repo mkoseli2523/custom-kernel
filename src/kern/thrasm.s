@@ -126,6 +126,8 @@ _thread_finish_jump:
         # (e) pc reg is set with teh value of sepc
         
         # set up sscratch to point to stack_anchor
+        ld a0, 0(a0)
+        ld a0, 13*8(a0)
         csrw sscratch, a0
 
         # set up sstatus
@@ -148,8 +150,8 @@ _thread_finish_jump:
         # set stack pointer to the user stack
         mv sp, a1
         
-        la t0, _trap_entry_from_umode
-        csrw stvec, t0
+        la t6, _trap_entry_from_umode
+        csrw stvec, t6
 
         sret
 

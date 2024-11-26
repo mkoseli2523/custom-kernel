@@ -178,7 +178,7 @@ extern void __attribute__ ((noreturn)) _thread_finish_jump (
 
 // function to get the current thread
 struct thread * cur_thread(void) {
-    return CURTHR;
+    return thrtab[MAIN_TID];
 }
 
 void * cur_stack_base(void) {
