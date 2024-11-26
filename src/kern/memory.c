@@ -587,30 +587,46 @@ void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
  */
 
 void memory_handle_page_fault(const void * vptr){
-    // Ensure vma is well-formed
-    if (!wellformed_vma((uintptr_t)vptr) || !aligned_ptr(vptr, PAGE_SIZE)){
-        kprintf("Page fault at invalid virtual address: %p\n", vptr);
-        panic("Page fault: Address validation failed");
-        return;
-    }
+    uintptr_t va = (uintptr_t) vptr;
+    struct pte * root_pt, * pa_pte, * new_pp;
     
-    // Check if address is within user region
-    if ((uintptr_t)vptr < USER_START_VMA || (uintptr_t)vptr >= USER_END_VMA){
-        kprintf("Page fault, address %p is outside user region\n", vptr);
-        panic("Page fault: Address not in user region");
-        return;
+    console_printf("handling page fault at virtual address: 0x%lx\n", va);
+
+    // check if the virtual address is within the user mem space
+    if (va < USER_START_VMA || va >= USER_END_VMA) {
+        console_printf("memory_handle_page_fault: 0x%lx is outside user space\n", va);
+        panic("page fault in invalid address space");
     }
 
-    void *mapped_address = memory_alloc_and_map_page((uintptr_t)vptr, PTE_R | PTE_W | PTE_U);
-    // Map new page to faulting virtual address with the appropriate permissions
-    if (!mapped_address){
-        kprintf("Failed to map address: %p\n", vptr);
-        panic("Page Fault: Failed to map address");
-        return;
+    // ensure va is page aligned
+    va = round_down_addr(va, PAGE_SIZE);
+    
+    if (!aligned_addr(va, PAGE_SIZE)) {
+        console_printf("memory_handle_page_fault: 0x%lx is not page-aligned\n", va);
+        panic("page fault at non-aligned address");
     }
 
-    // Success!
-    kprintf("Page fault handled: mapped new page for address %p\n", vptr);
+    // get the root page table for the active memory space and get to the pte for the va
+    root_pt = active_space_root();
+    pa_pte = walk_pt(root_pt, va, 1);
+
+    if (pa_pte == NULL) {
+        console_printf("memory_handle_page_fault: pte not found for address 0x%lx\n", va);
+        panic("Page fault: PTE not found");
+    }
+
+    // allocate new pp
+    new_pp = (struct pte *) memory_alloc_and_map_page(va, PTE_R | PTE_W | PTE_U);
+
+    if (new_pp == NULL) {
+        console_printf("memory_handle_page_fault: failed to allocate physical page for address 0x%lx\n", va);
+        panic("Page fault: Memory allocation failed");
+    }
+
+    // flush tlb
+    sfence_vma();
+
+    console_printf("memory_handle_page_fault: successfully handled page fault at address 0x%lx\n", va);
 }
 
 

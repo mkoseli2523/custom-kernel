@@ -35,6 +35,7 @@ extern char thrmgr_initialized;
 
 // function to get the current thread
 extern struct thread * cur_thread(void);
+extern void * cur_stack_base(void);
 
 extern void thread_init(void);
 

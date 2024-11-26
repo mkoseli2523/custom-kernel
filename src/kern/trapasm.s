@@ -151,22 +151,14 @@ _trap_entry_from_umode:
         # stack pointer. We start by allocating a trap frame and saving t6
         # there, so we can use it as a temporary register.
 
-        
-        # load the address of the thread stack anchor into sp
-        csrr t6, sscratch
+        csrrw sp, sscratch, sp
 
-        # load in current thread
-        ld t6, 0(t6)
+        # Save t6 and original sp to trap frame, then save rest
 
-        ld sp, 13*8(t6)
-
-        # allocate space for the trap frame
-        addi sp, sp, -34*8
-
-        # save t6 and original sp to trap frame
+        addi    sp, sp, -34*8   # allocate space for trap frame
         sd      t6, 31*8(sp)    # save t6 (x31) in trap frame
         addi    t6, sp, 34*8    # save original sp
-        sd      t6, 2*8(sp)     # 
+        sd      t6, 2*8(sp)     #
 
         save_gprs_except_t6_and_sp
         save_sstatus_and_sepc
@@ -183,21 +175,21 @@ _trap_entry_from_umode:
         # this address in /ra/ before we jump to exception or trap handler.
         # We're returning to U mode, so restore _trap_entry_from_umode as
         # trap handler.
-        
+
         # restore stvec to point to trap entry from umode
         la t6, _trap_entry_from_umode
         csrw stvec, t6
 
         restore_sstatus_and_sepc
         restore_gprs_except_t6_and_sp
-
+        
         ld      t6, 31*8(sp)
         ld      sp, 2*8(sp)
 
         # restore the sp
         addi sp, sp, 34*8
 
-        # csrw sscratch, t6 
+        csrrw sp, sscratch, sp
 
         sret
 

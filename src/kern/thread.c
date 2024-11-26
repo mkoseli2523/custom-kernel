@@ -181,6 +181,10 @@ struct thread * cur_thread(void) {
     return CURTHR;
 }
 
+void * cur_stack_base(void) {
+    return CURTHR->stack_base;
+}
+
 int running_thread(void) {
     return CURTHR->id;
 }

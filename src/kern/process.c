@@ -120,27 +120,15 @@ int process_exec(struct io_intf * exeio) {
     // (d) start the process in user mode
     // set up the stack
     usp = USER_STACK_VMA;
-
-    // allocate and map the user stac page
-    void * user_stack = memory_alloc_and_map_page(usp - PAGE_SIZE, PTE_R | PTE_W | PTE_U);
-
-    if (!user_stack) {
-        kprintf("process_exec: stack allocation failed\n");
-        return -1;
-    }
-
-    // flush tlb to ensure cpu recognizes the update
-    asm inline ("sfence.vma" ::: "memory");
     
     // set up stack anchor
-    // copied from thread_spawn
-    stack_anchor = user_stack + PAGE_SIZE - sizeof(struct thread_stack_anchor);
+    stack_anchor = (struct thread_stack_anchor*) cur_stack_base();
     stack_anchor->thread = cur_thread();
     stack_anchor->reserved = 0;
 
     // call thread_jump_user (in thrasm.s) to finish switching to umode
-    _thread_finish_jump(stack_anchor, usp  - sizeof(struct thread_stack_anchor), (uintptr_t)entry_point);
-
+    _thread_finish_jump(stack_anchor, usp, (uintptr_t)entry_point);
+    
     // this line should not execute
     panic("process_exec: returned from user mode execution\n");
     return -1;
