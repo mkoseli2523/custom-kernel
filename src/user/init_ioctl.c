@@ -43,6 +43,45 @@ void main(void) {
         _msgout("Failed to set file position");
     }
 
+    // Validate file position was updated
+    result = _ioctl(0, IOCTL_GETPOS, &metadata);
+    if (result == 0) {
+        char message[64];
+        snprintf(message, sizeof(message), "Current file position after reset: %llu", metadata);
+        _msgout(message);
+    } else {
+        _msgout("Failed to validate file position after reset");
+    }
+
+    // Set file position to 5 (arbitrary example)
+    metadata = 5;
+    result = _ioctl(0, IOCTL_SETPOS, &metadata);
+    if (result == 0) {
+        _msgout("Successfully set file position to 5");
+    } else {
+        _msgout("Failed to set file position to 5");
+    }
+
+    // Validate file position was updated to 5
+    result = _ioctl(0, IOCTL_GETPOS, &metadata);
+    if (result == 0) {
+        char message[64];
+        snprintf(message, sizeof(message), "Current file position after setting to 5: %llu", metadata);
+        _msgout(message);
+    } else {
+        _msgout("Failed to validate file position after setting to 5");
+    }
+
+    // Get block size using IOCTL_GETBLKSZ
+    result = _ioctl(0, IOCTL_GETBLKSZ, &metadata);
+    if (result == 0) {
+        char message[64];
+        snprintf(message, sizeof(message), "Block size: %llu", metadata);
+        _msgout(message);
+    } else {
+        _msgout("Failed to get block size");
+    }
+
     // Close the file
     _close(0);
     _exit();
