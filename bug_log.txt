@@ -34,5 +34,13 @@
     Fix: In our _thread_finish_jump function, we did not properly set stvec to point to _trap_entry_from_umode, during the transition
     from supervisor mode to user mode. As a result, exceptions and traps occurring in user mode were incorrectly routed to supervisor-mode 
     handlers, causing privilege mode violations and kernel panics. Correcting this resolved the privilege issue.
-    
+
+== Bug #4: == 
+    Files Associated: trapasm.s process.c
+    Description: Didn't lazy allocate user stack
+    Fix: The bug we encountered here was when we were calling memory_alloc_and_map_page when trying to allocate the stack. This caused the page fault
+    handler to panic since it resulted in the virtual address being outside the user space. To fix this, we used lazy allocation for the stack and set the 
+    thread_stack_anchor to be in the user stack rather than the kernel stack.
+
+
 === CP3 Bugs ===
