@@ -123,8 +123,6 @@ int process_exec(struct io_intf * exeio) {
     
     // set up stack anchor
     stack_anchor = (struct thread_stack_anchor*) cur_stack_base();
-    stack_anchor->thread = cur_thread();
-    stack_anchor->reserved = 0;
 
     // call thread_jump_user (in thrasm.s) to finish switching to umode
     _thread_finish_jump(stack_anchor, usp, (uintptr_t)entry_point);

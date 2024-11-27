@@ -187,7 +187,7 @@ _trap_entry_from_umode:
         ld      sp, 2*8(sp)
 
         # restore the sp
-        addi sp, sp, 34*8
+        # addi sp, sp, 34*8
 
         csrrw sp, sscratch, sp
 

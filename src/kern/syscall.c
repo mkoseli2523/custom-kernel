@@ -76,7 +76,7 @@ static int sysdevopen(int fd, const char *name, int instno){
         return -EMFILE; //FD out of range
     }
     // Attempt to open device name string 
-    if (!memory_validate_vstr(name, PTE_U)){
+    if (memory_validate_vstr(name, PTE_U) != 0){
         return -EINVAL; //invalid file name
     } 
 
@@ -109,7 +109,7 @@ static int sysfsopen(int fd, const char *name){
     if (fd < 0 || fd >= PROCESS_IOMAX){
         return -EMFILE; // Invalid file name
     }
-    if(!memory_validate_vstr(name, PTE_U | PTE_A)){
+    if(memory_validate_vstr(name, PTE_U | PTE_A) != 0){
         return -EINVAL; // Invalid file name
     }
 
@@ -167,7 +167,7 @@ static long sysread(int fd, void *buf, size_t bufsz){
         return -EBADFD; // invalid file descriptor
     }
 
-    if (!memory_validate_vptr_len(buf, bufsz, PTE_W | PTE_U)){
+    if (memory_validate_vptr_len(buf, bufsz, PTE_W | PTE_U) != 0){
         return -EINVAL; // invalid buf pointers
     }
 
@@ -194,12 +194,11 @@ static long syswrite(int fd, const void *buf, size_t len){
         return -EBADFD; // invalid file descriptor
     }
 
-    if(!memory_validate_vptr_len(buf, len, PTE_R | PTE_U)){
+    if(memory_validate_vptr_len(buf, len, PTE_R | PTE_U) != 0){
         return -EINVAL; // invalid buf pointer
     }
 
     return proc->iotab[fd]->ops->write(proc->iotab[fd], buf, len);
-
 }
 
 
