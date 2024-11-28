@@ -21,7 +21,7 @@ CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -fno-asynchronous-unwind-tables
 CFLAGS += -I.
 
-all: bin/trek bin/init0 bin/init1 bin/init2 bin/init_cat bin/init_ioctl bin/test_kernel_access bin/test_kernel_write bin/test_execute_noexec
+all: bin/trek bin/init0 bin/init1 bin/init2 bin/init_cat bin/init_ioctl bin/test_kernel_access bin/test_kernel_write bin/test_execute_noexec bin/test_nonreadable bin/test_nonwritable
 
 bin/init0: $(ULIB_OBJS) init0.o
 	$(LD) -T user.ld -o $@ $^
@@ -45,6 +45,12 @@ bin/test_kernel_write: $(ULIB_OBJS) test_kernel_write.o
 	$(LD) -T user.ld -o $@ $^
 
 bin/test_execute_noexec: $(ULIB_OBJS) test_execute_noexec.o
+	$(LD) -T user.ld -o $@ $^
+
+bin/test_nonreadable: $(ULIB_OBJS) test_nonreadable.o
+	$(LD) -T user.ld -o $@ $^
+
+bin/test_nonwritable: $(ULIB_OBJS) test_nonwritable.o
 	$(LD) -T user.ld -o $@ $^
 
 clean:
