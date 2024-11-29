@@ -25,13 +25,14 @@ CORE_OBJS = \
 	uart.o \
 	virtio.o \
 	vioblk.o \
-	kfs.o \
-	elf.o \
-	console.o\
+	console.o \
 	excp.o \
-	process.o \
 	memory.o \
+	kfs.o \
+	process.o \
 	syscall.o \
+	elf.o
+	# Add more object files here
 
 CFLAGS = -Wall -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -mcmodel=medany -fno-pie -no-pie -march=rv64g -mabi=lp64d
@@ -44,7 +45,8 @@ QEMUOPTS += -machine virt -bios none -kernel $< -m 8M -nographic
 QEMUOPTS += -serial mon:stdio
 QEMUOPTS += -drive file=kfs.raw,id=blk0,if=none,format=raw
 QEMUOPTS += -device virtio-blk-device,drive=blk0
-QEMUOPTS += -serial pty -serial pty # need a second screen for init5
+QEMUOPTS += -serial pty
+QEMUOPTS += -monitor pty
 
 # try to generate a unique GDB port
 GDBPORT = $(shell expr `id -u` % 5000 + 25000)
@@ -68,6 +70,16 @@ clean:
 	if [ -f companion.o ]; then cp companion.o companion.o.save; fi
 	rm -rf *.o *.elf *.asm
 	if [ -f companion.o.save ]; then mv companion.o.save companion.o; fi
+
+# additional test cases
+test_memory.elf: $(CORE_OBJS) test_memory.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_memory: test_memory.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_memory: test_memory.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
 # This will load the trek file into your kernel memory, via kernel.ld
 # `mkcomp.sh`, as well as the documentation, contain discussion
