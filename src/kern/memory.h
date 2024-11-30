@@ -62,6 +62,11 @@ extern uintptr_t main_mtag;
 // EXPORTED FUNCTION DECLARATIONS
 //
 
+// should clone memory space  for current process and return the mtag of the new memory space. 
+// Should be used in thread fork to user to setup the memory space for the child process.
+
+extern uintptr_t memory_space_clone(uint_fast16_t asid);
+
 // void memory_init(void)
 // Initializes the memory manager. Must be called before calling any other
 // functions of the memory manager.

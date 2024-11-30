@@ -24,6 +24,8 @@
 #define NTHR 16
 #endif
 
+#define SATP_ASID_MASK 0xFFFF0000000000ULL
+
 // EXPORTED GLOBAL VARIABLES
 //
 
@@ -176,6 +178,85 @@ extern void __attribute__ ((noreturn)) _thread_finish_jump (
 // EXPORTED FUNCTION DEFINITIONS
 //
 
+/**
+ * forks the current process to create a child process and sets up a new thread for the child
+ * 
+ * this function performs the following steps:
+ * -allocate new memeory for the child process
+ * -setup a new thread struct
+ * -initialize stack anchor
+ * -child thread process
+ * -switch into child's memory space
+ * -set up the thread by calling _thread_setup and add it to ready to run list
+ * 
+ * @param child_proc    pointer to the child process structure
+ * @param parent_tfr    pointer to the parent's trap frame
+ * 
+ * @return              returns 0 on success or a negative a value on error
+ */
+
+int thread_fork_to_user(struct process *child_proc, const struct trap_frame *parent_tfr) {
+    if (!child_proc || !parent_tfr) {
+        return -1; // arguments invalid
+    }
+
+    struct thread* child_thread;
+    struct thread_stack_anchor* child_stack_anchor;
+    // struct trap_frame* child_tfr;
+
+    // allocate new memory for the child process
+    uint_fast16_t child_proc_asid = (int_fast16_t) (child_proc->mtag & SATP_ASID_MASK) >> 44;
+    uintptr_t child_mtag = memory_space_clone(child_proc_asid);
+
+    if (!child_mtag) {
+        return -2; // memory space clone failed 
+    } 
+
+    child_proc->mtag = child_mtag;
+
+    // set up a new thread struct
+    void * arg[2] = {child_thread, parent_tfr};
+    int child_tid = thread_spawn("child_thread", (void (*)(void *))_thread_finish_fork, arg);
+
+    if (child_tid < 0) {
+        return -3; // thread setup failed
+    }
+
+    // initilize a stack anchor to reclaim the thread pointer when coming back from U mode interrupt
+    child_thread = thrtab[child_tid];
+
+    child_stack_anchor = child_thread->stack_base;
+    child_stack_anchor->reserved = 0;
+    child_stack_anchor->thread = child_thread;
+
+    if (!child_thread) {
+        return -4; // thread don't exist
+    }
+
+    // copy the trap frame
+    // this part should be handled in _thread_setup
+    // child_thread->stack_base = child_thread->stack_base - sizeof(struct trap_frame); // set it to bottom of the stack for now
+    // child_tfr = child_thread->stack_base;
+    // *child_tfr = *parent_tfr;
+
+    // set child_thread process
+    thread_set_process(child_tid, child_proc);
+
+    // switch into child's memory space
+    uintptr_t result = memory_space_switch(child_mtag);
+
+    if (!result) {
+        kprintf("something went wrong when switching memory spaces\n");
+        return -5;
+    }
+
+    // update tid of the child process
+    child_thread->proc->tid = child_proc->tid;
+
+    // function executes w no errors
+    return 0;
+}
+
 // function to get the current thread
 struct thread * cur_thread(void) {
     return thrtab[MAIN_TID];
@@ -217,12 +298,11 @@ int thread_spawn(const char * name, void (*start)(void *), void * arg) {
     
     // Allocate a struct thread and a stack
 
-    child = kmalloc(PAGE_SIZE + sizeof(struct thread));
-    child = (void*)child + PAGE_SIZE;
-    memset(child, 0, sizeof(struct thread));
+    child = kmalloc(sizeof(struct thread));
 
     stack_page = memory_alloc_page();
-    stack_anchor = stack_page + PAGE_SIZE - sizeof(struct thread_stack_anchor);
+    stack_anchor = stack_page + PAGE_SIZE;
+    stack_anchor -= 1;
     stack_anchor->thread = child;
     stack_anchor->reserved = 0;
 
@@ -234,12 +314,14 @@ int thread_spawn(const char * name, void (*start)(void *), void * arg) {
     child->parent = CURTHR;
     child->proc = CURTHR->proc;
     child->stack_base = stack_anchor;
-    child->stack_size = PAGE_SIZE - sizeof(struct thread_stack_anchor);
+    child->stack_size = child->stack_base - stack_page;
     set_thread_state(child, THREAD_READY);
 
     saved_intr_state = intr_disable();
     tlinsert(&ready_list, child);
     intr_restore(saved_intr_state);
+
+    _thread_setup(child, child->stack_base, start, arg);
     
     return tid;
 }
