@@ -352,12 +352,14 @@ void memory_set_page_flags(const void *vp, uint8_t rwxug_flags) {
 
 
 /**
- * switches to the main memory space, and reclaims the previous mem space
+ * memory_space_reclaim - reclaims memory for the current process's memory space.
  * 
- * this function first fetches the old satp (supervisor address translation and protection register),
- * extracts the old rootpage from it, switches to the main memory spaces, flushes tlb, and iteratively
- * reclaims the old memory space by calling walk_pt helper function to get to the leaf pt and calls
- * memory_free_page function to finally reclaim the page
+ * This function switches to the main memory space, flushes the TLB, and frees
+ * user-space pages and non-global page table entries from the current memory space.
+ * 
+ * @param: This function does not take in any parameters
+ * 
+ * @returns: This function does not return.
  */
 
 void memory_space_reclaim(void) {
