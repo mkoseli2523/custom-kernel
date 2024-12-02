@@ -9,7 +9,11 @@
 #define DEBUG
 #endif
 
+<<<<<<< HEAD
 #define INIT_PROC "fib" // name of init process executable
+=======
+#define INIT_PROC "test_extra_credit" // name of init process executable
+>>>>>>> master
 
 #include "console.h"
 #include "thread.h"

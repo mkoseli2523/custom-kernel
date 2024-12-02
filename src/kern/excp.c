@@ -52,16 +52,34 @@ static const char * const excp_names[] = {
 void smode_excp_handler(unsigned int code, struct trap_frame * tfr) {
 	default_excp_handler(code, tfr);
 }
-
+/**
+ * umode_excp_handler - handles exceptions while running in user mode. 
+ * 
+ * This funciton classifies the exception based on its code and invokes thhe
+ * appropriate handler for the specific exception. 
+ * 
+ * @param: code The exception code indicating the type of exception.
+ *               Values are defined in the RISC-V specification:
+ *               - 12: Instruction page fault
+ *               - 13: Load page fault
+ *               - 15: Store/AMO page fault
+ *               - 8: System call
+ * 
+ * @param tfr   Pointer to the trap frame structure, which contains the 
+ *              saved registers and state information at the time of 
+ *              the exception.
+ * 
+ * @returns     This funciton returns nothing.
+ */
 void umode_excp_handler(unsigned int code, struct trap_frame * tfr) {
     switch (code) {
-    case 12: // instruction page fault
-    case 13: // load page fault
-    case 15: // store/amo page fault
+    case RISCV_SCAUSE_INSTR_PAGE_FAULT: // instruction page fault
+    case RISCV_SCAUSE_LOAD_PAGE_FAULT: // load page fault
+    case RISCV_SCAUSE_STORE_PAGE_FAULT: // store/amo page fault
         console_printf("page fault in supervisor mode\n");
         memory_handle_page_fault((void *)csrr_stval());
         break;
-    case 8:
+    case RISCV_SCAUSE_ECALL_FROM_UMODE:
         syscall_handler(tfr); // Pass trap frame to syscall handler
         break;
     default:
