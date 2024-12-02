@@ -99,6 +99,20 @@
         .global _trap_entry_from_smode
         .type   _trap_entry_from_smode, @function
         .balign 4 # Trap entry must be 4-byte aligned
+        
+/**
+ * _trap_entry_from_smode - S-mode trap/exception handler.
+ *
+ * Saves trap frame, calls `trap_smode_cont` for handling, and restores state.
+ *
+ * Workflow:
+ * 1. Save `sstatus`, `sepc`, and general-purpose registers to trap frame.
+ * 2. Dispatch to `trap_smode_cont`.
+ * 3. Restore state and return to the original context using `sret`.
+ *
+ * @param void   No parameters.
+ * @return       None.
+ */
 
 _trap_entry_from_smode:
 
@@ -142,6 +156,21 @@ trap_smode_cont:
         .global _trap_entry_from_umode
         .type   _trap_entry_from_umode, @function
         .balign 4 # Trap entry must be 4-byte aligned
+
+/**
+ * _trap_entry_from_umode - Handles U-mode traps and exceptions.
+ *
+ * Saves trap frame, switches to S-mode for handling, and restores state.
+ *
+ * Workflow:
+ * 1. Save `sstatus`, `sepc`, and general-purpose registers to trap frame.
+ * 2. Update `stvec` to point to `_trap_entry_from_smode` for exception handling.
+ * 3. Dispatch to `trap_umode_cont` for processing.
+ * 4. Restore state and `stvec` for U-mode and return to the original context using `sret`.
+ *
+ * @param void   No parameters.
+ * @return       None.
+ */
 
 _trap_entry_from_umode:
 
