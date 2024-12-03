@@ -36,7 +36,6 @@ CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -fno-asynchronous-unwind-tables
 CFLAGS += -I.
 
-<<<<<<< HEAD
 all: $(ALL_TARGETS)
 
 bin/trek: $(ULIB_OBJS) trek.o
@@ -47,9 +46,6 @@ bin/rule30: $(ULIB_OBJS) rule30.o
 	
 bin/troll: $(ULIB_OBJS) troll.o
 	$(LD) -T user.ld -o $@ $^
-=======
-all: bin/trek bin/init0 bin/init1 bin/init2 bin/init_cat bin/init_ioctl bin/test_kernel_access bin/test_kernel_write bin/test_execute_noexec bin/test_nonreadable bin/test_nonwritable bin/test_extra_credit
->>>>>>> master
 
 bin/init0: $(ULIB_OBJS) init0.o
 	$(LD) -T user.ld -o $@ $^
@@ -81,11 +77,6 @@ bin/init_fib_rule30: $(ULIB_OBJS) init_fib_rule30.o
 bin/init_fib_fib: $(ULIB_OBJS) init_fib_fib.o
 	$(LD) -T user.ld -o $@ $^
 
-<<<<<<< HEAD
-=======
-bin/test_extra_credit: $(ULIB_OBJS) test_extra_credit.o
-	$(LD) -T user.ld -o $@ $^
->>>>>>> master
 
 clean:
 	rm -rf *.o *.elf *.asm $(ALL_TARGETS)
