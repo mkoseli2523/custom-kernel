@@ -15,6 +15,7 @@
 #include "thread.h"
 #include "halt.h"
 #include "console.h"
+#include "intr.h"
 
 struct lock {
     struct condition cond;
@@ -35,7 +36,24 @@ static inline void lock_init(struct lock * lk, const char * name) {
 }
 
 static inline void lock_acquire(struct lock * lk) {
-    // TODO: FIXME implement this
+    trace("%s(<%s:%p>)", __func__, lk->cond.name, lk);
+
+    while(1){
+        int intr_state = intr_disable();
+
+        if(lk->tid == -1) {
+            lk->tid = running_thread();
+            intr_restore(intr_state);
+            debug("Thread <%s:%d> acquired lock <%s:%p>", 
+                thread_name(running_thread()), running_thread(),
+                lk->cond.name, lk);
+            return;
+        }
+
+        // Wait if lock is held
+        condition_wait(&lk->cond);
+        intr_restore(intr_state);
+    }
 }
 
 static inline void lock_release(struct lock * lk) {
