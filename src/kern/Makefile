@@ -64,6 +64,33 @@ run-kernel: kernel.elf
 debug-kernel: kernel.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
+test_memory.elf: $(CORE_OBJS) test_memory.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_memory: test_memory.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_memory: test_memory.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+test_non_readable.elf: $(CORE_OBJS) test_non_readable.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_non_readable: test_non_readable.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_non_readable: test_non_readable.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+test_non_writable.elf: $(CORE_OBJS) test_non_writable.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_non_writable: test_non_writable.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_non_writable: test_non_writable.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
 clean:
 	if [ -f companion.o ]; then cp companion.o companion.o.save; fi
 	rm -rf *.o *.elf *.asm
