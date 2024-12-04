@@ -280,7 +280,7 @@ static int sysexec(int fd){ //assume process exec handles cleanup of fd table
 
 static int sysfork(const struct trap_frame *tfr){
     struct process *child_proc;
-    for(int i = 0; i < NPROC; i++){
+    for(int i = 0; i < 16; i++){ //16 is NPROC, the number of processes
         if(proctab[i] == NULL){
             child_proc = kmalloc(sizeof(struct process));
             proctab[i] = child_proc;
