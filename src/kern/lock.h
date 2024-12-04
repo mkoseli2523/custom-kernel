@@ -52,7 +52,6 @@ static inline void lock_acquire(struct lock * lk) {
 
         // Wait if lock is held
         condition_wait(&lk->cond);
-        intr_restore(intr_state);
     }
 }
 

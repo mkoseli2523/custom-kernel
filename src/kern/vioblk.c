@@ -10,6 +10,7 @@
 #include "error.h"
 #include "string.h"
 #include "thread.h"
+#include "lock.h"
 
 //           COMPILE-TIME PARAMETERS
 //          
