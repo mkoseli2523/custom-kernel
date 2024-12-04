@@ -10,6 +10,7 @@
 #include "error.h"
 #include "string.h"
 #include "thread.h"
+#include "lock.h"
 
 //           COMPILE-TIME PARAMETERS
 //          
@@ -109,6 +110,7 @@ struct vioblk_device {
     uint64_t bufblkno;
     //           Block buffer
     char * blkbuf;
+    struct lock io_lock;
 };
 
 //           INTERNAL FUNCTION DECLARATIONS
@@ -203,6 +205,8 @@ void vioblk_attach(volatile struct virtio_mmio_regs * regs, int irqno) {
     //           Allocate initialize device struct
     dev = kmalloc(sizeof(struct vioblk_device) + blksz);
     memset(dev, 0, sizeof(struct vioblk_device));
+
+    lock_init(&dev->io_lock, "vioblk_io_lock");
     //           FIXME Finish initialization of vioblk device here
     //-----------------------------------------------------------------------------
     // initialize device fields
@@ -280,8 +284,11 @@ void vioblk_attach(volatile struct virtio_mmio_regs * regs, int irqno) {
 int vioblk_open(struct io_intf ** ioptr, void * aux) {
     struct vioblk_device * dev = (struct vioblk_device *)aux;
 
+    lock_acquire(&dev->io_lock); // acquire the lock
+
     // check if the device is already opened
     if (dev->opened) {
+        lock_release(&dev->io_lock);
         return -EBUSY;
     }
 
@@ -309,7 +316,7 @@ int vioblk_open(struct io_intf ** ioptr, void * aux) {
     dev->opened = 1;
 
     // console_printf("device opened\n");
-
+    lock_release(&dev->io_lock);
     return 0;
 }
 
@@ -326,6 +333,8 @@ int vioblk_open(struct io_intf ** ioptr, void * aux) {
 void vioblk_close(struct io_intf * io) {
     struct vioblk_device *dev = (void *)io - offsetof(struct vioblk_device, io_intf);
 
+    lock_acquire(&dev->io_lock);
+
     // reset the avail ring 
     dev->vq.avail.idx = 0;
     dev->vq.avail.flags = VIRTQ_AVAIL_F_NO_INTERRUPT;
@@ -335,6 +344,8 @@ void vioblk_close(struct io_intf * io) {
 
     // reset the device position to the beginning
     virtio_reset_virtq(dev->regs, dev->regs->queue_num);
+
+    lock_release(&dev->io_lock);
 
     dev->opened = 0;
 }
@@ -358,6 +369,8 @@ long vioblk_read (
 {
     struct vioblk_device * dev = (void *)io - offsetof(struct vioblk_device, io_intf);
     long total_read = 0;
+
+    lock_acquire(&dev->io_lock);
 
     while (total_read < bufsz) {
         if (dev->pos >= dev->size) break;
@@ -410,6 +423,7 @@ long vioblk_read (
         total_read += bytes_this_read;
     }
 
+    lock_release(&dev->io_lock);
     return total_read;
 }
 
@@ -438,6 +452,8 @@ long vioblk_write (
     if (dev->readonly) {
         return -EINVAL;
     }
+
+    lock_acquire(&dev->io_lock); // acquire lock
 
     // very similar to read
     while (total_written < n) {
@@ -524,6 +540,7 @@ long vioblk_write (
         total_written += bytes_this_write;
     }
 
+    lock_release(&dev->io_lock);
     return total_written;
 }
 
@@ -532,19 +549,30 @@ int vioblk_ioctl(struct io_intf * restrict io, int cmd, void * restrict arg) {
         offsetof(struct vioblk_device, io_intf);
     
     trace("%s(cmd=%d,arg=%p)", __func__, cmd, arg);
+
+    int result;
+
+    lock_acquire(&dev->io_lock);
     
     switch (cmd) {
     case IOCTL_GETLEN:
-        return vioblk_getlen(dev, arg);
+        result = vioblk_getlen(dev, arg);
+        break;
     case IOCTL_GETPOS:
-        return vioblk_getpos(dev, arg);
+        result = vioblk_getpos(dev, arg);
+        break;
     case IOCTL_SETPOS:
-        return vioblk_setpos(dev, arg);
+        result = vioblk_setpos(dev, arg);
+        break;
     case IOCTL_GETBLKSZ:
-        return vioblk_getblksz(dev, arg);
+        result = vioblk_getblksz(dev, arg);
+        break;
     default:
         return -ENOTSUP;
     }
+
+    lock_release(&dev->io_lock);
+    return result;
 }
 
 // void vioblk_isr(int irqno, void * aux);
