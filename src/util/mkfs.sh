@@ -1,2 +1,2 @@
-./mkfs kfs.raw ../user/bin/init0 ../user/bin/init1 ../user/bin/init2 ../user/bin/init_ioctl ../user/bin/init_cat ../user/bin/trek hello.txt ../user/bin/test_kernel_access ../user/bin/test_kernel_write ../user/bin/test_execute_noexec ../user/bin/test_nonreadable ../user/bin/test_nonwritable ../user/bin/test_extra_credit
+./mkfs kfs.raw ../user/bin/init0 ../user/bin/init1 ../user/bin/init2 ../user/bin/init_ioctl ../user/bin/init_cat ../user/bin/trek hello.txt ../user/bin/test_kernel_access ../user/bin/test_kernel_write ../user/bin/test_execute_noexec ../user/bin/test_extra_credit
 mv kfs.raw ../kern

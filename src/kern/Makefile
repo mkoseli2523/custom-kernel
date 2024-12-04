@@ -81,6 +81,24 @@ run-test_memory: test_memory.elf
 debug-test_memory: test_memory.elf
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
+test_non_readable.elf: $(CORE_OBJS) test_non_readable.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_non_readable: test_non_readable.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_non_readable: test_non_readable.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+test_non_writable.elf: $(CORE_OBJS) test_non_writable.o companion.o
+	$(LD) -T kernel.ld -o $@ $^
+
+run-test_non_writable: test_non_writable.elf
+	$(QEMU) $(QEMUOPTS)
+
+debug-test_non_writable: test_non_writable.elf
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
 # This will load the trek file into your kernel memory, via kernel.ld
 # `mkcomp.sh`, as well as the documentation, contain discussion
 companion.o:

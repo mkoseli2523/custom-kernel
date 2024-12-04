@@ -588,46 +588,51 @@ void *memory_alloc_and_map_page(uintptr_t vma, uint_fast8_t rwxug_flags){
  *              within the user region
  */
 
-void memory_handle_page_fault(const void * vptr){
-    uintptr_t va = (uintptr_t) vptr;
-    struct pte * root_pt, * pa_pte, * new_pp;
-    
+void memory_handle_page_fault(const void * vptr) {
+    uintptr_t va = (uintptr_t)vptr;
+    struct pte *root_pt, *pa_pte, *new_pp;
+
     console_printf("handling page fault at virtual address: 0x%lx\n", va);
 
-    // check if the virtual address is within the user mem space
+    // Check if the virtual address is within the user memory space
     if (va < USER_START_VMA || va >= USER_END_VMA) {
         console_printf("memory_handle_page_fault: 0x%lx is outside user space\n", va);
-        panic("page fault in invalid address space");
+        panic("Page fault in invalid address space");
     }
 
-    // ensure va is page aligned
+    // Ensure va is page aligned
     va = round_down_addr(va, PAGE_SIZE);
-    
     if (!aligned_addr(va, PAGE_SIZE)) {
         console_printf("memory_handle_page_fault: 0x%lx is not page-aligned\n", va);
-        panic("page fault at non-aligned address");
+        panic("Page fault at non-aligned address");
     }
 
-    // get the root page table for the active memory space and get to the pte for the va
+    // Get the root page table and locate the PTE for the virtual address
     root_pt = active_space_root();
     pa_pte = walk_pt(root_pt, va, 1);
 
-    if (pa_pte == NULL) {
-        console_printf("memory_handle_page_fault: pte not found for address 0x%lx\n", va);
-        panic("Page fault: PTE not found");
+    if (pa_pte == NULL || !(pa_pte->flags & PTE_V)) {
+        // Page not allocated, allocate a new page with default permissions
+        console_printf("memory_handle_page_fault: Allocating new page at 0x%lx\n", va);
+        new_pp = (struct pte *)memory_alloc_and_map_page(va, PTE_R | PTE_W | PTE_U);
+        if (new_pp == NULL) {
+            console_printf("memory_handle_page_fault: failed to allocate physical page for address 0x%lx\n", va);
+            panic("Page fault: Memory allocation failed");
+        }
+    } else {
+        // Check for access permission violations
+        uint64_t cause = csrr_scause(); // Read the cause register
+        if ((cause & 0b10) && !(pa_pte->flags & PTE_W)) { // Write access violation
+            console_printf("memory_handle_page_fault: Write access violation at 0x%lx\n", va);
+            panic("Page fault: Write access violation");
+        } else if (!(cause & 0b10) && !(pa_pte->flags & PTE_R)) { // Read access violation
+            console_printf("memory_handle_page_fault: Read access violation at 0x%lx\n", va);
+            panic("Page fault: Read access violation");
+        }
     }
 
-    // allocate new pp
-    new_pp = (struct pte *) memory_alloc_and_map_page(va, PTE_R | PTE_W | PTE_U);
-
-    if (new_pp == NULL) {
-        console_printf("memory_handle_page_fault: failed to allocate physical page for address 0x%lx\n", va);
-        panic("Page fault: Memory allocation failed");
-    }
-
-    // flush tlb
+    // Flush TLB after handling
     sfence_vma();
-
     console_printf("memory_handle_page_fault: successfully handled page fault at address 0x%lx\n", va);
 }
 
