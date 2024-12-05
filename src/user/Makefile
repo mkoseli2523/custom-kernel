@@ -36,6 +36,7 @@ CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -fno-asynchronous-unwind-tables
 CFLAGS += -I.
 
+
 all: $(ALL_TARGETS)
 
 bin/trek: $(ULIB_OBJS) trek.o
@@ -46,6 +47,7 @@ bin/rule30: $(ULIB_OBJS) rule30.o
 	
 bin/troll: $(ULIB_OBJS) troll.o
 	$(LD) -T user.ld -o $@ $^
+
 
 bin/init0: $(ULIB_OBJS) init0.o
 	$(LD) -T user.ld -o $@ $^
