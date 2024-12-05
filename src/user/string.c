@@ -1,20 +1,20 @@
-// string.c - String functions
-//
+//           string.c - String functions
+//          
 
 #include "string.h"
 
 #include <stdint.h>
 
-// INTERNAL STRUCTURE DEFINITIONS
-// 
+//           INTERNAL STRUCTURE DEFINITIONS
+//           
 
 struct vsnprintf_state {
 	char * pos;
 	size_t rem;
 };
 
-// INTERNAL FUNCTION DECLARATIONS
-// 
+//           INTERNAL FUNCTION DECLARATIONS
+//           
 
 static void vsnprintf_putc(char c, void * aux);
 
@@ -26,11 +26,11 @@ static size_t format_str (
 	void (*putcfn)(char, void*), void * aux,
 	const char * s, unsigned int len);
 
-// EXPORTED FUNCTION DEFINITIONS
-// 
+//           EXPORTED FUNCTION DEFINITIONS
+//           
 
 int strcmp(const char * s1, const char * s2) {
-	// A null pointer compares before any non-null pointer
+	//           A null pointer compares before any non-null pointer
 
 	if (s1 == NULL || s2 == NULL) {
 		if (s1 == NULL)
@@ -39,7 +39,7 @@ int strcmp(const char * s1, const char * s2) {
 			return 1;
 	}
 
-	// Find first non-matching character (or '\0')
+	//           Find first non-matching character (or '\0')
 
 	while (*s1 == *s2 && *s1 != '\0') {
 		s1 += 1;
@@ -50,7 +50,8 @@ int strcmp(const char * s1, const char * s2) {
 		return -1;
 	else if (*s1 > *s2)
 		return 1;
-	else // null char
+	//           null char
+	else
 		return 0;
 }
 
@@ -191,7 +192,7 @@ size_t vgprintf (
 		if (*p == '%') {
 			p += 1;
 
-			// Parse width specifier
+			//           Parse width specifier
 			
 			zpad = (*p == '0');
 			len = 0;
@@ -201,7 +202,7 @@ size_t vgprintf (
 				p += 1;
 			}
 
-			// Check for l and other prefixes prefix
+			//           Check for l and other prefixes prefix
 
 			lcnt = 0;
 			while (*p == 'l') {
@@ -227,7 +228,7 @@ size_t vgprintf (
 				p += 1;
 			}
 
-			// Parse format specifier character
+			//           Parse format specifier character
 
 			switch (*p) {
 			case 'd':
@@ -305,8 +306,8 @@ size_t vgprintf (
 	return nout;
 }
 
-// INTERNAL FUNCTION DEFINITIONS
-// 
+//           INTERNAL FUNCTION DEFINITIONS
+//           
 
 void vsnprintf_putc(char c, void * aux) {
 	struct vsnprintf_state * state = aux;
@@ -331,7 +332,7 @@ size_t format_int (
 	nout = 0;
 	p = buf + sizeof(buf);
 
-	// Write formatted integer to buf from end
+	//           Write formatted integer to buf from end
 
 	do {
 		d = val % base;
@@ -344,7 +345,7 @@ size_t format_int (
 			*p = 'a' + d - 10;
 	} while (val != 0);
 
-	// Write padding if needed
+	//           Write padding if needed
 
 	while (buf + sizeof(buf) - p < len) {
 		if (zpad)
@@ -355,7 +356,7 @@ size_t format_int (
 		len -= 1;
 	}
 	
-	// Write formatted integer in buf.
+	//           Write formatted integer in buf.
 
 	while (p < buf + sizeof(buf)) {
 		putcfn(*p, aux);
