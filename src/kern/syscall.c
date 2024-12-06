@@ -12,6 +12,7 @@
 #include "device.h"
 #include "io.h"
 #include "timer.h"
+#include "heap.h"
 
 /**
  * sysexit - Exits the current process
