@@ -5,9 +5,9 @@
 #define _THREAD_H_
 
 #include "trap.h"
-#include "process.h"
 #include <stddef.h>
 
+struct process; // forward decl. 
 struct thread; // forward decl.
 
 struct thread_stack_anchor {

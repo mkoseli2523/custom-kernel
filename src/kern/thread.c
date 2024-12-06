@@ -196,13 +196,15 @@ extern void __attribute__ ((noreturn)) _thread_finish_jump (
  */
 
 int thread_fork_to_user(struct process *child_proc, const struct trap_frame *parent_tfr){
+    struct thread_stack_anchor * stack_anchor;
+    void * stack_page;
+    struct thread * child;
+    int saved_intr_state;
+    int tid;
+
     if (!child_proc || !parent_tfr) {
         return -1; // arguments invalid
     }
-
-    struct thread* child_thread;
-    struct thread_stack_anchor* child_stack_anchor;
-    // struct trap_frame* child_tfr;
 
     // allocate new memory for the child process
     uint_fast16_t child_proc_asid = (int_fast16_t) ((child_proc->mtag & SATP_ASID_MASK) >> 44);
@@ -215,32 +217,40 @@ int thread_fork_to_user(struct process *child_proc, const struct trap_frame *par
     child_proc->mtag = child_mtag;
 
     // set up a new thread struct
-    void * arg[2] = {child_thread, parent_tfr};
-    int child_tid = thread_spawn("child_thread", (void (*)(void *))_thread_finish_fork, arg);
+    tid = 0;
+    while (++tid < NTHR)
+        if (thrtab[tid] == NULL)
+            break;
+    
+    if (tid == NTHR)
+        panic("Too many threads");
 
-    if (child_tid < 0) {
-        return -3; // thread setup failed
-    }
+    // Allocate a struct thread and a stack
 
-    // initilize a stack anchor to reclaim the thread pointer when coming back from U mode interrupt
-    child_thread = thrtab[child_tid];
+    child = kmalloc(sizeof(struct thread));
 
-    child_stack_anchor = child_thread->stack_base;
-    child_stack_anchor->reserved = 0;
-    child_stack_anchor->thread = child_thread;
+    stack_page = memory_alloc_page();
+    stack_anchor = stack_page + PAGE_SIZE;
+    stack_anchor -= 1;
+    stack_anchor->thread = child;
+    stack_anchor->reserved = 0;
 
-    if (!child_thread) {
-        return -4; // thread don't exist
-    }
+    thrtab[tid] = child;
 
-    // copy the trap frame
-    // this part should be handled in _thread_setup
-    // child_thread->stack_base = child_thread->stack_base - sizeof(struct trap_frame); // set it to bottom of the stack for now
-    // child_tfr = child_thread->stack_base;
-    // *child_tfr = *parent_tfr;
+    child->id = tid;
+    child->name = "forked_process";
+    child->parent = CURTHR;
+    child->proc = CURTHR->proc;
+    child->stack_base = stack_anchor;
+    child->stack_size = child->stack_base - stack_page;
+    set_thread_state(child, THREAD_READY);
+
+    saved_intr_state = intr_disable();
+    tlinsert(&ready_list, child);
+    intr_restore(saved_intr_state);
 
     // set child_thread process
-    thread_set_process(child_tid, child_proc);
+    thread_set_process(tid, child_proc);
 
     // switch into child's memory space
     uintptr_t result = memory_space_switch(child_mtag);
@@ -251,7 +261,15 @@ int thread_fork_to_user(struct process *child_proc, const struct trap_frame *par
     }
 
     // update tid of the child process
-    child_thread->proc->tid = child_proc->tid;
+    child->proc->tid = child_proc->tid;
+
+    // copy the trap frame
+    // this part should be handled in _thread_setup
+    // child_thread->stack_base = child_thread->stack_base - sizeof(struct trap_frame); // set it to bottom of the stack for now
+    // child_tfr = child_thread->stack_base;
+    // *child_tfr = *parent_tfr;
+
+    _thread_setup(child, child->stack_base, (void (*)(void *))_thread_finish_fork, tid, parent_tfr);
 
     // function executes w no errors
     return 0;

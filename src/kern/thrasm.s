@@ -243,9 +243,6 @@ _thread_finish_fork:
         # child process thread and back to the u mode interrupt handler, it 
         # then restroes the saved trap frame which is a duplicate of the parent tfr
         
-        # get the current arguments from arg
-        ld a1, 8(a0)
-        
         # save the current running thread
         save_current_thread_context
 
