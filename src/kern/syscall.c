@@ -299,6 +299,7 @@ static int sysusleep(unsigned long us){
 
     // Sleep for the specified number of ticks
     alarm_sleep(&al, ticks);
+    return ticks;
 }
 
 
