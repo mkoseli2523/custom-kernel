@@ -730,8 +730,8 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
     }
     memset(new_root, 0, PAGE_SIZE); // Zero out the new root table
 
-    uintptr_t new_mtag = ((uintptr_t)RISCV_SATP_MODE_Sv39 << RISCV_SATP_MODE_shift) |
-                         (asid << RISCV_SATP_ASID_shift) |
+    uintptr_t new_mtag = ((uintptr_t) RISCV_SATP_MODE_Sv39 << RISCV_SATP_MODE_shift) |
+                         ((uintptr_t) asid << RISCV_SATP_ASID_shift) |
                          pageptr_to_pagenum(new_root);
 
 
@@ -745,7 +745,7 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
             continue; // Skip unmapped pages
         }
     
-        void *parent_phys_page = (void *)(parent_pte->ppn << PAGE_ORDER);
+        void *parent_phys_page = (void *)((uint64_t)parent_pte->ppn << (uint64_t)PAGE_ORDER);
 
         memory_alloc_and_map_page(vma, parent_pte->flags & PTE_FLAGS_MASK);
 
@@ -756,7 +756,7 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
             return 0;
         }
 
-        void *child_phys_page = (void *)(child_pte->ppn << PAGE_ORDER);
+        void *child_phys_page = (void *)((uint64_t)child_pte->ppn << (uint64_t)PAGE_ORDER);
         if (!child_phys_page) {
             memory_space_reclaim(); // Reclaim child space on failure
             memory_space_switch(old_mtag); // Restore parent space

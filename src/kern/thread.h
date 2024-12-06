@@ -9,6 +9,7 @@
 
 struct process; // forward decl. 
 struct thread; // forward decl.
+struct process;
 
 struct thread_stack_anchor {
     struct thread * thread;
