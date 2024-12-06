@@ -315,7 +315,12 @@ static int sysfork(const struct trap_frame *tfr){
         return -1;
     }
     struct process *current_proc = current_process();
-    child_proc->id = (int)(child_proc - proctab);
+    for(int i = 0; i < 16; i++){
+        if(proctab[i] == child_proc){
+            child_proc->id = i;
+            break;
+        }
+    }
     child_proc->tid = -1; // Will be set by thread_fork_to_user
     child_proc->mtag = 0; // Will be set by memory_space_clone in thread_fork_to_user
     for(int j = 0; j < PROCESS_IOMAX; j++){
@@ -376,6 +381,9 @@ int64_t syscall(struct trap_frame * tfr){
             break;
         case SYSCALL_USLEEP:
             return sysusleep(a[0]);
+            break;
+        case SYSCALL_FORK:
+            return sysfork((const struct trap_frame *)a[0]);
             break;
         default:
             return -EINVAL; // Invalid syscall
