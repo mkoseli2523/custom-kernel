@@ -195,7 +195,7 @@ extern void __attribute__ ((noreturn)) _thread_finish_jump (
  * @return              returns 0 on success or a negative a value on error
  */
 
-int thread_fork_to_user(struct process *child_proc, const struct trap_frame *parent_tfr) {
+int thread_fork_to_user(struct process *child_proc, const struct trap_frame *parent_tfr){
     if (!child_proc || !parent_tfr) {
         return -1; // arguments invalid
     }
@@ -205,7 +205,7 @@ int thread_fork_to_user(struct process *child_proc, const struct trap_frame *par
     // struct trap_frame* child_tfr;
 
     // allocate new memory for the child process
-    uint_fast16_t child_proc_asid = (int_fast16_t) (child_proc->mtag & SATP_ASID_MASK) >> 44;
+    uint_fast16_t child_proc_asid = (int_fast16_t) ((child_proc->mtag & SATP_ASID_MASK) >> 44);
     uintptr_t child_mtag = memory_space_clone(child_proc_asid);
 
     if (!child_mtag) {

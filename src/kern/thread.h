@@ -5,6 +5,7 @@
 #define _THREAD_H_
 
 #include "trap.h"
+#include "process.h"
 #include <stddef.h>
 
 struct thread; // forward decl.
