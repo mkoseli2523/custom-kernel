@@ -803,7 +803,7 @@ struct pte * walk_pt(struct pte* root, uintptr_t vma, int create) {
     // walk down the page table starting from the highest level (ie level 2)
     for (int level = 2; level > 0; level--) {
         // check if the entry is valid
-        if (&pt[vpn[level]] != NULL && pt[vpn[level]].flags & PTE_V) {
+        if (pt != NULL && pt[vpn[level]].flags & PTE_V) {
             // grab the page table entry of the next level
             struct pte* pte = (struct pte*)((uint64_t)pt[vpn[level]].ppn << PAGE_ORDER);
 

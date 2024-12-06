@@ -37,6 +37,13 @@ extern char thrmgr_initialized;
 extern struct thread * cur_thread(void);
 extern void * cur_stack_base(void);
 
+// This function allocates new memory for the child process and sets up another thread struct.
+extern int thread_fork_to_user(struct process *child_proc, const struct trap_frame *parent_tfr);
+
+// This function begins be saving the currently running thread. Switches to the new child process thread and
+// back to the U mode interrupt handler
+extern void _thread_finish_fork(struct thread *child, const struct trap_frame *parent_tfr);
+
 extern void thread_init(void);
 
 // int running_thread(void)

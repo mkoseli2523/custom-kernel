@@ -11,6 +11,7 @@
 #include "trap.h"
 #include "device.h"
 #include "io.h"
+#include "timer.h"
 
 /**
  * sysexit - Exits the current process
@@ -272,10 +273,32 @@ static int sysexec(int fd){ //assume process exec handles cleanup of fd table
     return process_exec(arg);
 }
 
+static int syswait(int tid){
+    trace("%s(%d)", __func__, tid);
 
+    if(tid == 0){
+        return thread_join_any();
+    } else {
+        return thread_join(tid);
+    }
+}
 
+static int sysusleep(unsigned long us){
+    struct alarm al;
 
+    if (us == 0){
+        return -EINVAL;
+    }
 
+    // Initialize alarm
+    alarm_init(&al, "sysusleep");
+
+    // Convert microseconds to timer ticks
+    uint64_t ticks = (us * TIMER_FREQ) / 1000000;
+
+    // Sleep for the specified number of ticks
+    alarm_sleep(&al, ticks);
+}
 
 
 static int sysfork(const struct trap_frame *tfr){
@@ -309,7 +332,6 @@ static int sysfork(const struct trap_frame *tfr){
     return child_proc->id;
 
 }
-
 
 
 /**
@@ -347,6 +369,12 @@ int64_t syscall(struct trap_frame * tfr){
             break;
         case SYSCALL_EXEC:
             return sysexec(a[0]);
+            break;
+        case SYSCALL_WAIT:
+            return syswait(a[0]);
+            break;
+        case SYSCALL_USLEEP:
+            return sysusleep(a[0]);
             break;
         default:
             return -EINVAL; // Invalid syscall

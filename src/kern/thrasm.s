@@ -1,5 +1,80 @@
 # thrasm.s - Special functions called from thread.c
 #
+        .macro save_current_frame
+        addi    sp, sp, -16
+        sd      ra, 8(sp)
+        sd      sp, 0(sp)
+        .endm
+
+        .macro recover_current_frame
+        ld      ra, 8(sp)
+        ld      sp, 0(sp)
+        addi    sp, sp, 16
+        .endm
+
+        .macro  save_current_thread_context
+        sd      s0, 0*8(tp)
+        sd      s1, 1*8(tp)
+        sd      s2, 2*8(tp)
+        sd      s3, 3*8(tp)
+        sd      s4, 4*8(tp)
+        sd      s5, 5*8(tp)
+        sd      s6, 6*8(tp)
+        sd      s7, 7*8(tp)
+        sd      s8, 8*8(tp)
+        sd      s9, 9*8(tp)
+        sd      s10, 10*8(tp)
+        sd      s11, 11*8(tp)
+        sd      ra, 12*8(tp)
+        sd      sp, 13*8(tp)
+        .endm
+        
+        .macro restore_trap_frame_except_t6_and_a1
+        # ld      x31, 31*8(a1)   # x31 is t6
+        ld      x30, 30*8(a1)   # x30 is t5
+        ld      x29, 29*8(a1)   # x29 is t4
+        ld      x28, 28*8(a1)   # x28 is t3
+        ld      x27, 27*8(a1)   # x27 is s11
+        ld      x26, 26*8(a1)   # x26 is s10
+        ld      x25, 25*8(a1)   # x25 is s9
+        ld      x24, 24*8(a1)   # x24 is s8
+        ld      x23, 23*8(a1)   # x23 is s7
+        ld      x22, 22*8(a1)   # x22 is s6
+        ld      x21, 21*8(a1)   # x21 is s5
+        ld      x20, 20*8(a1)   # x20 is s4
+        ld      x19, 19*8(a1)   # x19 is s3
+        ld      x18, 18*8(a1)   # x18 is s2
+        ld      x17, 17*8(a1)   # x17 is a7
+        ld      x16, 16*8(a1)   # x16 is a6
+        ld      x15, 15*8(a1)   # x15 is a5
+        ld      x14, 14*8(a1)   # x14 is a4
+        ld      x13, 13*8(a1)   # x13 is a3
+        ld      x12, 12*8(a1)   # x12 is a2
+        # ld      x11, 11*8(a1)   # x11 is a1
+        ld      x10, 10*8(a1)   # x10 is a0
+        ld      x9, 9*8(a1)     # x9 is s1
+        ld      x8, 8*8(a1)     # x8 is s0/fp
+        ld      x7, 7*8(a1)     # x7 is t2
+        ld      x6, 6*8(a1)     # x6 is t1
+        ld      x5, 5*8(a1)     # x5 is t0
+        # ld      x4, 4*8(a1)     # x4 is tp
+        ld      x3, 3*8(a1)     # x3 is gp
+        ld      x2, 2*8(a1)     # x2 is sp
+        ld      x1, 1*8(a1)     # x1 is ra
+        mv      x0, tp          # x0 contains tp in user programs
+        .endm
+
+
+        .macro restore_sepc_and_sstatus
+        # sepc
+        ld      t6, 32*8(a1)
+        csrw    sepc, t6
+        
+        # sstatus
+        ld      t6, 33*8(a1)
+        csrw    sstatus, t6
+        .endm
+
 
 # struct thread * _thread_swtch(struct thread * resuming_thread)
 
@@ -156,12 +231,50 @@ _thread_finish_jump:
         sret
 
 
+        .global _thread_finish_fork
+        .type   _thread_finish_fork, @function
+
+# extern void _thread_finish_fork
+#         (struct thread *child, 
+#         const struct trap_frame *parent_tfr); 
+
+_thread_finish_fork:
+        # this function saves the current running thread, switches to the new 
+        # child process thread and back to the u mode interrupt handler, it 
+        # then restroes the saved trap frame which is a duplicate of the parent tfr
+        
+        # get the current arguments from arg
+        ld a1, 8(a0)
+        
+        # save the current running thread
+        save_current_thread_context
+
+        # switch to the new child process thread
+        mv      tp, a0
+
+        # restore the saved trap frame 
+        restore_trap_frame_except_t6_and_a1
+
+        # set a0 to 0 in child frame
+        addi    t6, a1, 80              # indexes into a0
+        sd      zero, 0(t6)
+
+        # restore a1 and t6
+        ld      x31, 31*8(a1)   # x31 is t6
+        ld      x11, 11*8(a1)   # x11 is a1
+
+        restore_sepc_and_sstatus
+
+        # return to u mode
+        sret
+
+
 # Statically allocated stack for the idle thread.
 
         .section        .data.stack, "wa", @progbits
         .balign          16
         
-        .equ            IDLE_STACK_SIZE, 1024
+        .equ            IDLE_STACK_SIZE, 4096
 
         .global         _idle_stack_lowest
         .type           _idle_stack_lowest, @object

@@ -9,7 +9,7 @@
 #include "halt.h"
 #include "error.h"
 #include "memory.h"
-
+#include "lock.h"
 
 // constant definitions
 #define FS_BLKSZ      4096
@@ -90,7 +90,7 @@ struct boot_block_t boot_block;
 struct file_struct file_structs[FS_MAXOPEN];
 inode_t inode;
 data_block_t data_block;
-
+static struct lock fs_lock;
 
 /**
  * fs_mount - Initializes the filesystem for use.
@@ -101,6 +101,9 @@ data_block_t data_block;
  *                      Errors include already initialized filesystem or I/O issues.
  */
 int fs_mount(struct io_intf* blkio) {
+    // Initialize lock 
+    lock_init(&fs_lock, "Filesystem Lock");
+    
     // store the block device interface
     vioblk_io = blkio;
 
@@ -154,9 +157,13 @@ int fs_mount(struct io_intf* blkio) {
  *                      or file not found in directory entries.
  */
 int fs_open(const char* name, struct io_intf** ioptr) {
+    // Acquire the lock
+    lock_acquire(&fs_lock);
+
     // check if file system is initialized before calling open
     if (!fs_initialized) {
         console_printf("filesystem not initialized\n");
+        lock_release(&fs_lock); // Release the lock before returning 
         return -1;
     }
 
@@ -177,6 +184,7 @@ int fs_open(const char* name, struct io_intf** ioptr) {
     // check if we found a valid file slot
     if (file == NULL) {
         console_printf("no available file slots\n");
+        lock_release(&fs_lock);
         return -1;
     }
 
@@ -201,6 +209,7 @@ int fs_open(const char* name, struct io_intf** ioptr) {
 
     if (!dentry) {
         console_printf("file not found in directory entries\n");
+        lock_release(&fs_lock);
         return -1;
     }
 
@@ -214,6 +223,7 @@ int fs_open(const char* name, struct io_intf** ioptr) {
     uint64_t inode_pos = FS_BLKSZ + file->inode_number * FS_BLKSZ;
     if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_pos) != 0) {
         console_printf("can't set file position\n");
+        lock_release(&fs_lock); 
         return -1;
     }
 
@@ -222,6 +232,7 @@ int fs_open(const char* name, struct io_intf** ioptr) {
     uint64_t bytes_read = vioblk_io->ops->read(vioblk_io, &inode, sizeof(struct inode_t));
     if (bytes_read != sizeof(struct inode_t)) {
         console_printf("can't read inode\n");
+        lock_release(&fs_lock);
         return -1;
     }
 
@@ -235,6 +246,8 @@ int fs_open(const char* name, struct io_intf** ioptr) {
     // succesfully opened file return 0
     console_printf("file opened successfully. file position: %d file size: %d inode number: %d\n",
                                     file->file_position, file->file_size, file->inode_number);
+
+    lock_release(&fs_lock);
     return 0;
 }
 
@@ -279,8 +292,12 @@ void fs_close(struct io_intf* io) {
  *                      does not extend the file size or create new files.
  */
 long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
+    // Acquire lock
+    lock_acquire(&fs_lock);
+
     // make sure the parameters are valid
     if (!io || !buf) {
+        lock_release(&fs_lock); // Release lock before returning
         return -1;
     }
 
@@ -291,18 +308,21 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
 
     // ensure the file struct is valid and in use
     if (file->flags == 0) {
+        lock_release(&fs_lock); // Release lock before returning
         return -2;
     }
 
 
     // make sure the file system is initialized
     if (!fs_initialized) {
+        lock_release(&fs_lock); // Release lock before returning
         return -3;
     }
 
 
     // check if we are at the end of a file
     if (file->file_position >= file->file_size) {
+        lock_release(&fs_lock); // Release lock before returning
         return 0;
     }
 
@@ -323,12 +343,14 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
 
     // read the inode
     if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_offset) != 0) {
+    lock_release(&fs_lock); // Release lock before returning
         return -1; // Error setting position
     }
 
 
     long bytes_read = vioblk_io->ops->read(vioblk_io, &inode, sizeof(inode_t));
     if (bytes_read != sizeof(inode_t)) {
+    lock_release(&fs_lock);
         return -5;
     }
 
@@ -365,6 +387,7 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
 
         // write to the data block
         if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_offset) != 0) {
+            lock_release(&fs_lock);
             return -6;
         }
 
@@ -380,6 +403,7 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
 
         bytes_written = vioblk_io->ops->write(vioblk_io, &data_block, bytes_this_write);
         if (bytes_written != bytes_this_write) {
+            lock_release(&fs_lock);
             return -7;
         }
 
@@ -394,6 +418,7 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
     // update file position
     file->file_position = file_pos;
 
+    lock_release(&fs_lock);
 
     // return the number of bytes read
     return total_bytes_written;
@@ -417,8 +442,12 @@ long fs_write(struct io_intf* io, const void* buf, unsigned long n) {
  */
 long fs_read(struct io_intf* io, void* buf, unsigned long n)
 {
+    // Acquire lock
+    lock_acquire(&fs_lock);
+
     // make sure the parameters are valid
     if (!io || !buf) {
+        lock_release(&fs_lock);
         return -1;
     }
 
@@ -429,18 +458,21 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
 
     // ensure the file struct is valid and in use
     if (file->flags == 0) {
+        lock_release(&fs_lock); // Release lock before returning
         return -1;
     }
 
 
     // make sure the file system is initialized
     if (!fs_initialized) {
+        lock_release(&fs_lock); // Release lock before returning
         return -1;
     }
 
 
     // check if we are at the end of a file
     if (file->file_position >= file->file_size) {
+        lock_release(&fs_lock); // Release lock before returning
         return 0;
     }
 
@@ -461,12 +493,14 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
 
     // read the inode
     if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &inode_offset) != 0) {
+        lock_release(&fs_lock);
         return -1; // Error setting position
     }
 
 
     long bytes_read = vioblk_io->ops->read(vioblk_io, &inode, sizeof(inode_t));
     if (bytes_read != sizeof(inode_t)) {
+        lock_release(&fs_lock);
         return -1;
     }
 
@@ -501,6 +535,7 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
 
         // read the data block
         if (vioblk_io->ops->ctl(vioblk_io, IOCTL_SETPOS, &data_block_offset) != 0) {
+            lock_release(&fs_lock);
             return -1;
         }
 
@@ -512,6 +547,7 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
 
         bytes_read = vioblk_io->ops->read(vioblk_io, &data_block, sizeof(data_block_t));
         if (bytes_read != sizeof(data_block_t)) {
+            lock_release(&fs_lock);
             return -1;
         }
 
@@ -530,6 +566,7 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
     // update file position
     file->file_position = file_pos;
 
+    lock_release(&fs_lock); // Release lock before returning
 
     // return the number of bytes read
     return total_bytes_read;
@@ -551,36 +588,41 @@ long fs_read(struct io_intf* io, void* buf, unsigned long n)
  *                      or a negative error code for unsupported commands.
  */
 int fs_ioctl(struct io_intf* io, int cmd, void* arg) {
+    lock_acquire(&fs_lock);
+
     // retrieve file struct from io_intf
     struct file_struct* file = (struct file_struct*)((char*)io - offsetof(struct file_struct, io));
 
 
     // check if the file is valid and open
     if (!file || !file->flags) {
+        lock_release(&fs_lock);
         return -1;
     }
 
-
+    int result;
     // route the command to the appropriate helper function
     switch(cmd) {
         case IOCTL_GETLEN:
-            return fs_getlen(file, arg);
-       
+            result = fs_getlen(file, arg);
+            break;
         case IOCTL_GETPOS:
-            return fs_getpos(file, arg);
-
+            result = fs_getpos(file, arg);
+            break;
 
         case IOCTL_SETPOS:
-            return fs_setpos(file, arg);
-
+            result = fs_setpos(file, arg);
+            break;
 
         case IOCTL_GETBLKSZ:
-            return fs_getblksz(file, arg);
-
-
+            result = fs_getblksz(file, arg);
+            break;
         default:
             return -ENOTSUP;
     }
+    
+    lock_release(&fs_lock);
+    return result;
 }
 
 
