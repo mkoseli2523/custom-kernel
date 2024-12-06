@@ -299,6 +299,41 @@ static int sysusleep(unsigned long us){
     // Sleep for the specified number of ticks
     alarm_sleep(&al, ticks);
 }
+
+
+static int sysfork(const struct trap_frame *tfr){
+    struct process *child_proc;
+    for(int i = 0; i < 16; i++){ //16 is NPROC, the number of processes
+        if(proctab[i] == NULL){
+            child_proc = kmalloc(sizeof(struct process));
+            proctab[i] = child_proc;
+            break;
+        }
+    }
+    if(!child_proc){
+        return -1;
+    }
+    struct process *current_proc = current_process();
+    child_proc->id = (int)(child_proc - proctab);
+    child_proc->tid = -1; // Will be set by thread_fork_to_user
+    child_proc->mtag = 0; // Will be set by memory_space_clone in thread_fork_to_user
+    for(int j = 0; j < PROCESS_IOMAX; j++){
+        child_proc->iotab[j] = current_proc->iotab[j]; //still need to increment refcount
+    }
+    int result = thread_fork_to_user(child_proc, tfr);
+    if(result<0){
+        //need to decrement refcount here
+        memset(child_proc, 0, sizeof(struct process)); //forget about the memory, just clear it out
+        proctab[child_proc->id] = NULL;
+        //kfree(child_proc); // kfree does not exist so should I make that implementation?
+        return result;
+    }
+    
+    return child_proc->id;
+
+}
+
+
 /**
  * syscall - Dispatches the appropriate system call.
  *
