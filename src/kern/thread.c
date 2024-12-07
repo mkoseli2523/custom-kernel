@@ -199,7 +199,6 @@ int thread_fork_to_user(struct process *child_proc, const struct trap_frame *par
     struct thread_stack_anchor * stack_anchor;
     void * stack_page;
     struct thread * child;
-    int saved_intr_state;
     int tid;
 
     if (!child_proc || !parent_tfr) {
@@ -240,36 +239,21 @@ int thread_fork_to_user(struct process *child_proc, const struct trap_frame *par
     child->id = tid;
     child->name = "forked_process";
     child->parent = CURTHR;
-    child->proc = CURTHR->proc;
     child->stack_base = stack_anchor;
     child->stack_size = child->stack_base - stack_page;
-    set_thread_state(child, THREAD_READY);
 
-    saved_intr_state = intr_disable();
-    tlinsert(&ready_list, child);
-    intr_restore(saved_intr_state);
+    set_thread_state(child, THREAD_RUNNING);
+
+    // set tid of the child proc
+    child_proc->tid = tid;
 
     // set child_thread process
     thread_set_process(tid, child_proc);
+    
+    // switch memory spaces
+    memory_space_switch(child_mtag);
 
-    // switch into child's memory space
-    uintptr_t result = memory_space_switch(child_mtag);
-
-    if (!result) {
-        kprintf("something went wrong when switching memory spaces\n");
-        return -5;
-    }
-
-    // update tid of the child process
-    child->proc->tid = child_proc->tid;
-
-    // copy the trap frame
-    // this part should be handled in _thread_setup
-    // child_thread->stack_base = child_thread->stack_base - sizeof(struct trap_frame); // set it to bottom of the stack for now
-    // child_tfr = child_thread->stack_base;
-    // *child_tfr = *parent_tfr;
-
-    _thread_setup(child, child->stack_base, (void (*)(void *))_thread_finish_fork, tid, parent_tfr);
+    _thread_finish_fork(child, parent_tfr);
 
     // function executes w no errors
     return 0;
