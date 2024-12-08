@@ -179,8 +179,8 @@ _trap_entry_from_umode:
         # address of the thread_stack_anchor also serves as our initial kernel
         # stack pointer. We start by allocating a trap frame and saving t6
         # there, so we can use it as a temporary register.
-
-        csrrw sp, sscratch, sp
+        
+        csrrw   sp, sscratch, sp
 
         # Save t6 and original sp to trap frame, then save rest
 
@@ -191,6 +191,14 @@ _trap_entry_from_umode:
 
         save_gprs_except_t6_and_sp
         save_sstatus_and_sepc
+
+        # read sscratch into t6 before calling umode trap
+        # which might change the value of sscratch
+        csrr    t6, sscratch
+
+        # after saving s8 move sscratch value into it
+        # since s8 is callee saved it should preserve its value after it returns
+        mv      s8, t6
 
         # update t6 to point to _trap_entry_from_smode
         la t6, _trap_entry_from_smode
@@ -209,14 +217,16 @@ _trap_entry_from_umode:
         la t6, _trap_entry_from_umode
         csrw stvec, t6
 
+        # restore sscratch
+        mv      t6, s8
+        csrw    sscratch, t6
+
         restore_sstatus_and_sepc
         restore_gprs_except_t6_and_sp
         
+        # restore t6, and sp
         ld      t6, 31*8(sp)
         ld      sp, 2*8(sp)
-
-        # restore the sp
-        # addi sp, sp, 34*8
 
         csrrw sp, sscratch, sp
 

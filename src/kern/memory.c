@@ -518,7 +518,7 @@ void memory_unmap_and_free_user(void) {
         // if leaf, unmap and free the pp
         if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
             // clear the mem flags
-            // pte->flags = 0;
+            pte->flags = 0;
 
             // leaf page, unmap and free
             uintptr_t pa = (uintptr_t)(pte->ppn) << 12;
@@ -895,8 +895,6 @@ uintptr_t active_memory_space(void) {
 
 uintptr_t memory_space_switch(uintptr_t mtag) {
     uintptr_t old_mtag = csrrw_satp(mtag);
-
-    sfence_vma();
 
     return old_mtag;
 }

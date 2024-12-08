@@ -61,7 +61,7 @@
         ld      x3, 3*8(a1)     # x3 is gp
         ld      x2, 2*8(a1)     # x2 is sp
         ld      x1, 1*8(a1)     # x1 is ra
-        mv      x0, tp          # x0 contains tp in user programs
+        ld      x0, 0(a1)          # x0 contains tp in user programs
         .endm
 
 
@@ -251,7 +251,7 @@ _thread_finish_fork:
         mv      tp, a0
 
         # store sp in sscratch
-        csrw    sscratch, sp
+        # csrw    sscratch, sp
 
         # restore the saved trap frame 
         restore_trap_frame_except_t6_and_a1
