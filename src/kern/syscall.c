@@ -384,7 +384,7 @@ int64_t syscall(struct trap_frame * tfr){
             return sysusleep(a[0]);
             break;
         case SYSCALL_FORK:
-            return sysfork((const struct trap_frame *)a[0]);
+            return sysfork((const struct trap_frame *)tfr);
             break;
         default:
             return -EINVAL; // Invalid syscall

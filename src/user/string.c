@@ -113,8 +113,8 @@ char * strncat(char *dst, const char *src, size_t n) {
 
 void * memset(void * s, int c, size_t n) {
   char * p = s;
-
-  while (n != 0) {
+  int n_init = n;
+  while (n <= n_init && n > 0) {
     *p++ = c;
     n -= 1;
   }

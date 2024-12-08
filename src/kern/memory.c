@@ -517,6 +517,9 @@ void memory_unmap_and_free_user(void) {
 
         // if leaf, unmap and free the pp
         if (pte->flags & (PTE_R | PTE_W | PTE_X)) {
+            // clear the mem flags
+            // pte->flags = 0;
+
             // leaf page, unmap and free
             uintptr_t pa = (uintptr_t)(pte->ppn) << 12;
 
@@ -729,7 +732,7 @@ int memory_validate_vstr (const char * vs, uint_fast8_t ug_flags){
  * representing the child's address space. It performs a shallow copy of the kernel mappings, and a 
  * deep copy of user-space pages by allocating new pages and copying their contents
  * 
- * @param asid      address space identifier for the child's address space
+ * @param asid      address space identifier for the child's address space unused for this MP
  * 
  * @return          returns the mtag of the newly cloned memory space
  */
@@ -750,14 +753,9 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
     memset(new_root, 0, PAGE_SIZE); // Zero out the new root table
 
     // make a shallow copy of the kernel image
-    int kernel_start_idx = VPN2((uintptr_t)RAM_START);
-
-    for (int i = kernel_start_idx; i < 512; i++) {
-        if (parent_root_pt[i].flags & PTE_V) {
-            // Just copy the kernel mapping entry.
-            // No allocation, no memcpy for kernel, just share the same page tables.
-            child_root[i] = parent_root_pt[i];
-        }
+    for (int i = 0; i < PTE_CNT; i++) {
+        if (main_pt2[i].flags & PTE_G)
+            child_root[i] = main_pt2[i]; // if its a global mapping copy it over
     }
 
     // clone the page table entries
@@ -767,7 +765,7 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
             continue; // Skip unmapped pages
         }
 
-        void *parent_phys_page = (void *)((uint64_t)parent_pte->ppn << (uint64_t)PAGE_ORDER);
+        void *parent_phys_page = pagenum_to_pageptr(parent_pte->ppn);
 
         // walk to the same vma in the child root
         struct pte *child_pte = walk_pt(child_root, vma, 1);
@@ -778,7 +776,10 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
         // set the ppn of the child pte to the newly allocated page
         child_pte->ppn = pageptr_to_pagenum(child_pt);
 
-        void *child_phys_page = (void *)((uint64_t)child_pte->ppn << (uint64_t)PAGE_ORDER);
+        // copy the flags over from paren pte
+        child_pte->flags |= parent_pte->flags;
+
+        void *child_phys_page = pagenum_to_pageptr(child_pte->ppn);
 
         // clone the contents of the parent vma to child vma
         memcpy(child_phys_page, parent_phys_page, PAGE_SIZE);
@@ -790,54 +791,6 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
                          pageptr_to_pagenum(child_root);
 
     return new_mtag;
-
-    // //not sure of this implementation
-    // struct pte *new_root = memory_alloc_page();
-    // if (!new_root) {
-    //     return 0; // Allocation failure
-    // }
-    // memset(new_root, 0, PAGE_SIZE); // Zero out the new root table
-
-    // uintptr_t new_mtag = ((uintptr_t) RISCV_SATP_MODE_Sv39 << RISCV_SATP_MODE_shift) |
-    //                      ((uintptr_t) asid << RISCV_SATP_ASID_shift) |
-    //                      pageptr_to_pagenum(new_root);
-
-
-    // struct pte *parent_root = active_space_root(); // Get parent page table root
-    // uintptr_t old_mtag = memory_space_switch(new_mtag);
-    // struct pte *child_root = active_space_root();  // Get child page table root (now active)
-
-    // for (uintptr_t vma = USER_START_VMA; vma < USER_END_VMA; vma += PAGE_SIZE) {
-    //     struct pte *parent_pte = walk_pt(parent_root, vma, 0);
-    //     if (!parent_pte || !(parent_pte->flags & PTE_V)) {
-    //         continue; // Skip unmapped pages
-    //     }
-    
-    //     void *parent_phys_page = (void *)((uint64_t)parent_pte->ppn << (uint64_t)PAGE_ORDER);
-
-    //     memory_alloc_and_map_page(vma, parent_pte->flags & PTE_FLAGS_MASK);
-
-    //     struct pte *child_pte = walk_pt(child_root, vma, 0);
-    //     if (!child_pte || !(child_pte->flags & PTE_V)) {
-    //         memory_space_reclaim();
-    //         memory_space_switch(old_mtag);
-    //         return 0;
-    //     }
-
-    //     void *child_phys_page = (void *)((uint64_t)child_pte->ppn << (uint64_t)PAGE_ORDER);
-    //     if (!child_phys_page) {
-    //         memory_space_reclaim(); // Reclaim child space on failure
-    //         memory_space_switch(old_mtag); // Restore parent space
-    //         return 0;
-    //     }
-
-
-    //     memcpy(child_phys_page, parent_phys_page, PAGE_SIZE);
-    // }
-
-    // memory_space_switch(old_mtag);
-
-    // return new_mtag;
 }
 
 

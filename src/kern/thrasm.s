@@ -66,13 +66,14 @@
 
 
         .macro restore_sepc_and_sstatus
-        # sepc
+        # sstatus
         ld      t6, 32*8(a1)
+        csrw    sstatus, t6
+
+        # sepc
+        ld      t6, 33*8(a1)
         csrw    sepc, t6
         
-        # sstatus
-        ld      t6, 33*8(a1)
-        csrw    sstatus, t6
         .endm
 
 
@@ -249,20 +250,25 @@ _thread_finish_fork:
         # switch to the new child process thread
         mv      tp, a0
 
+        # store sp in sscratch
+        csrw    sscratch, sp
+
         # restore the saved trap frame 
         restore_trap_frame_except_t6_and_a1
 
         # set a0 to 0 in child frame
-        addi    t6, a1, 80              # indexes into a0
-        sd      zero, 0(t6)
+        li x10, 0
 
         # restore a1 and t6
+        restore_sepc_and_sstatus
+
+        # restore stvec to point to trap entry from umode
+        la t6, _trap_entry_from_umode
+        csrw stvec, t6
+
         ld      x31, 31*8(a1)   # x31 is t6
         ld      x11, 11*8(a1)   # x11 is a1
 
-        restore_sepc_and_sstatus
-
-        # return to u mode
         sret
 
 

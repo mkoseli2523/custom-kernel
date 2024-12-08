@@ -99,9 +99,10 @@ int process_exec(struct io_intf * exeio) {
     uintptr_t usp;
 
     // (a) unmap any virtual memory mappings begongin to other user processes
-    memory_unmap_and_free_user();
+    // memory_unmap_and_free_user();
 
     // (b) no need to implement for cp2
+    // memory_space_clone(0);
 
     // (c) load the executable from io interface into memory
     result = elf_load(exeio, &entry_point);
