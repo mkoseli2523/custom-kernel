@@ -274,9 +274,17 @@ static int sysexec(int fd){ //assume process exec handles cleanup of fd table
     return process_exec(arg);
 }
 
+
+/**
+ * @brief Waits for a specific thread or any thread to finish execution.
+ *
+ * @param tid The ID of the thread to wait for, or 0 to wait for any thread.
+ * @return 0 on success, or an error code if the operation fails.
+ */
 static int syswait(int tid){
     trace("%s(%d)", __func__, tid);
 
+    // if no tid specified, wait for any thread to exist, otherwise wait for specified one
     if(tid == 0){
         return thread_join_any();
     } else {
@@ -284,9 +292,18 @@ static int syswait(int tid){
     }
 }
 
+
+
+/**
+ * @brief Puts the calling thread to sleep for a specified amount of time in microseconds.
+ *
+ * @param us The duration of the sleep in microseconds. Must be greater than 0.
+ * @return 0 on success, or -EINVAL if the input is invalid.
+ */
 static int sysusleep(unsigned long us){
     struct alarm al;
 
+    // ensure time to sleep for is non zero
     if (us == 0){
         return -EINVAL;
     }
@@ -303,7 +320,14 @@ static int sysusleep(unsigned long us){
 }
 
 
+/**
+ * @brief Creates a new child process by forking the current process's state.
+ *
+ * @param tfr A pointer to the trap frame representing the current process's state.
+ * @return The ID of the newly created child process to the parent, or -1 if the operation fails.
+ */
 static int sysfork(const struct trap_frame *tfr){
+    //make a child process
     struct process *child_proc;
     for(int i = 0; i < 16; i++){ //16 is NPROC, the number of processes
         if(proctab[i] == NULL){
@@ -312,9 +336,11 @@ static int sysfork(const struct trap_frame *tfr){
             break;
         }
     }
+    // ensure child proc is not null and is properly allocated
     if(!child_proc){
         return -1;
     }
+    // find the index into proctab array that child proc lives and set that as the tid for child
     struct process *current_proc = current_process();
     for(int i = 0; i < 16; i++){
         if(proctab[i] == child_proc){
@@ -324,21 +350,32 @@ static int sysfork(const struct trap_frame *tfr){
     }
     child_proc->tid = -1; // Will be set by thread_fork_to_user
     child_proc->mtag = 0; // Will be set by memory_space_clone in thread_fork_to_user
+
+    // copy over iotab array to child, incrementing refcnt if io_intf exists
     for(int j = 0; j < PROCESS_IOMAX; j++){
         if (current_proc->iotab[j]) 
             ioref(current_proc->iotab[j]);
             
-        child_proc->iotab[j] = current_proc->iotab[j]; //still need to increment refcount
+        child_proc->iotab[j] = current_proc->iotab[j];
     }
+
+    // call thread fork to user to finish forking
     int result = thread_fork_to_user(child_proc, tfr);
+
+    // if it fails, set the memory assigned to child proc to 0 and decrement the refcnt
     if(result<0){
-        //need to decrement refcount here
-        memset(child_proc, 0, sizeof(struct process)); //forget about the memory, just clear it out
+        memset(child_proc, 0, sizeof(struct process));
         proctab[child_proc->id] = NULL;
-        //kfree(child_proc); // kfree does not exist so should I make that implementation?
+
+        //decrement refcnt
+        for(int j = 0; j < PROCESS_IOMAX; j++){
+            if (current_proc->iotab[j]) 
+                ioclose(current_proc->iotab[j]);
+        }
         return result;
     }
     
+    //return child proc id to parent
     return child_proc->id;
 
 }
