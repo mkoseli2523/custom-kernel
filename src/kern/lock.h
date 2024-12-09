@@ -35,6 +35,15 @@ static inline void lock_init(struct lock * lk, const char * name) {
     lk->tid = -1;
 }
 
+/**
+ * lock_acquire - Acquires a lock, ensuring mutual exclusion.
+ *
+ * This function attempts to acquire the given lock. If the lock is already held,
+ * the calling thread is put to sleep until the lock becomes available.
+ *
+ * @param lk: Pointer to the lock to acquire.
+ */
+
 static inline void lock_acquire(struct lock * lk) {
     trace("%s(<%s:%p>)", __func__, lk->cond.name, lk);
 
