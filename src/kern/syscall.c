@@ -145,7 +145,8 @@ static int sysclose(int fd){
         return -EBADFD; // invalid file descriptor
     }
 
-    proc->iotab[fd]->ops->close(proc->iotab[fd]); // Close the associated resource
+    // proc->iotab[fd]->ops->close(proc->iotab[fd]); // Close the associated resource
+    ioclose(proc->iotab[fd]);
     proc->iotab[fd] = NULL;                      // Remove the file descriptor from the table
     return 0;
 }

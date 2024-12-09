@@ -9,7 +9,7 @@
 #include <stdarg.h> // va_list
 
 #include "error.h"  // ENOTSUP
-
+#include "console.h"
 // EXPORTED TYPE DEFINITIONS
 //
 
@@ -195,10 +195,10 @@ static inline void ioclose(struct io_intf * io) {
     if (io->refcnt == 0) {
         return;
     }
-
+    console_printf("refcnt pre decrement: %d\n", io->refcnt);
     // decrement reference count
     io->refcnt -= 1;
-
+    console_printf("refcnt post decrement: %d\n", io->refcnt);
     // call the close operation only if the reference count is 0
     if (io->refcnt == 0 && io->ops->close != NULL) {
         io->ops->close(io);

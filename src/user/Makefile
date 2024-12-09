@@ -79,6 +79,8 @@ bin/init_fib_rule30: $(ULIB_OBJS) init_fib_rule30.o
 bin/init_fib_fib: $(ULIB_OBJS) init_fib_fib.o
 	$(LD) -T user.ld -o $@ $^
 
-
+bin/test_refcnt: $(ULIB_OBJS) test_refcnt.o
+	$(LD) -T user.ld -o $@ $^
+	
 clean:
 	rm -rf *.o *.elf *.asm $(ALL_TARGETS)
