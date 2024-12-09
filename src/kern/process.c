@@ -102,6 +102,7 @@ int process_exec(struct io_intf * exeio) {
     memory_unmap_and_free_user();
 
     // (b) no need to implement for cp2
+    // memory_space_clone(0);
 
     // (c) load the executable from io interface into memory
     result = elf_load(exeio, &entry_point);
@@ -152,7 +153,7 @@ void __attribute__ ((noreturn)) process_exit(void) {
     // close open io device
     for (int i = 0; i < PROCESS_IOMAX; i++) {
         if (current_proc->iotab[i]) {
-            current_proc->iotab[i]->ops->close(current_proc->iotab[i]);
+            ioclose(current_proc->iotab[i]);
             current_proc->iotab[i] = NULL;
         }
     }

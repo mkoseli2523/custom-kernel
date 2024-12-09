@@ -295,6 +295,9 @@ static inline uintptr_t csrrw_satp(uintptr_t satp_new) {
     "csrrw %0, satp, %1"
     : "=r"(satp_old)
     : "r" (satp_new));
+
+    asm inline ("sfence.vma" ::: "memory");
+    
     return satp_old;
 }
 
