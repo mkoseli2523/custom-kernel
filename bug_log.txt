@@ -44,3 +44,10 @@
 
 
 === CP3 Bugs ===
+
+== Bug #1 ==
+    Files Associated: thrasm.s trapasm.s
+    Description: Not setting thread pointer from trap entry from umode, sscratch invalid
+    Fix: We passed stack anchor into sscratch. We dereferenced the sscratch to get the thread pointer, and went into the thread struct to acquire the sp from 
+    stack base. Then we also set the sscratch back to the kernel stack anchor before going back to umode.
+
