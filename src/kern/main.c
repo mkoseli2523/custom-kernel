@@ -9,7 +9,7 @@
 #define DEBUG
 #endif
 
-#define INIT_PROC "test_locking" // name of init process executable
+#define INIT_PROC "test_extra_credit" // name of init process executable
 
 #include "console.h"
 #include "thread.h"

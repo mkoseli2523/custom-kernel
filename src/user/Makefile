@@ -84,6 +84,10 @@ bin/test_refcnt: $(ULIB_OBJS) test_refcnt.o
 
 bin/test_locking: $(ULIB_OBJS) test_locking.o
 	$(LD) -T user.ld -o $@ $^
-	
+
+bin/test_extra_credit: $(ULIB_OBJS) test_extra_credit.o
+	$(LD) -T user.ld -o $@ $^
+
+
 clean:
 	rm -rf *.o *.elf *.asm $(ALL_TARGETS)
