@@ -1,2 +1,1 @@
-./mkfs kfs.raw ../user/bin/init0 ../user/bin/init1 ../user/bin/init2 ../user/bin/init_ioctl ../user/bin/init_cat ../user/bin/trek hello.txt ../user/bin/test_kernel_access ../user/bin/test_kernel_write ../user/bin/test_execute_noexec ../user/bin/test_extra_credit
-mv kfs.raw ../kern
+./mkfs ../kern/kfs.raw ../user/bin/init_fib_fib ../user/bin/init_fib_rule30 ../user/bin/init_trek_rule30 ../user/bin/fib ../user/bin/trek ../user/bin/rule30 ../user/bin/test_refcnt ../user/bin/test_locking testfile.txt
