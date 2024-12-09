@@ -188,6 +188,18 @@ _thread_setup:
 #      struct thread_stack_anchor * stack_anchor,
 #      uintptr_t usp, uintptr_t upc, ...);
 
+/**
+ * _thread_finish_jump - Switches from supervisor mode to user mode.
+ *
+ * Prepares for user mode execution by configuring `sscratch`, `sstatus`, and `sepc` 
+ * with the thread's stack anchor, user mode entry point, and stack pointer. 
+ * Returns to user mode with `sret`.
+ *
+ * Parameters:
+ *   - a0: Stack anchor pointer.
+ *   - a1: User stack pointer.
+ *   - a2: User mode entry point.
+ */
 
 _thread_finish_jump:
         # While in user mode, sscratch points to a struct thread_stack_anchor
@@ -238,6 +250,17 @@ _thread_finish_jump:
 # extern void _thread_finish_fork
 #         (struct thread *child, 
 #         const struct trap_frame *parent_tfr); 
+
+/**
+ * _thread_finish_fork - Completes a thread fork and transitions to user mode.
+ *
+ * Saves the current thread context, switches to the child thread, sets parent and 
+ * child return values, restores the trap frame, and enters user mode using `sret`.
+ *
+ * Parameters:
+ *   - a0: Pointer to the child thread.
+ *   - a1: Pointer to the parent trap frame.
+ */
 
 _thread_finish_fork:
         # this function saves the current running thread, switches to the new 
