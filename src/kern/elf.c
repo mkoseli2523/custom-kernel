@@ -15,6 +15,7 @@
 #include "console.h"
 #include "config.h"
 #include "memory.h"
+#include "process.h"
 #include <stdint.h>
 #include <string.h> 
 
@@ -140,7 +141,8 @@ int elf_load(struct io_intf *io, void (**entryptr)(void)){
     // 4. Set the entry point function pointer
     *entryptr = (void (*)(void))elf_header.e_entry;
 
-    console_printf("\n ELF loaded successfully. Entryptr: %p \n", (void*)*entryptr);
+    console_printf("current tid: %u\n", current_process()->tid);
+    console_printf("ELF loaded successfully. Entryptr: %p \n", (void*)*entryptr);
 
     return 0; // Success
 }

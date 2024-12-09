@@ -243,6 +243,17 @@ int thread_fork_to_user(struct process *child_proc, const struct trap_frame *par
     child->stack_base = stack_anchor;
     child->stack_size = child->stack_base - stack_page;
 
+    // // Allocate space for the trap frame just below the stack anchor
+    // struct trap_frame *child_tfr = (struct trap_frame *)( (uintptr_t)stack_anchor - sizeof(struct trap_frame) );
+
+    // // Copy parent trap frame to child trap frame
+    // memcpy(child_tfr, parent_tfr, sizeof(struct trap_frame));
+
+    // // Set return value in child's trap frame
+    // child_tfr->x[10] = 0;
+
+    // child->stack_base = child_tfr;
+
     set_thread_state(CURTHR, THREAD_READY);
     saved_intr_state = intr_disable();
     tlinsert(&ready_list, CURTHR);

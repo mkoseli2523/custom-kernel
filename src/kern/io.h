@@ -192,8 +192,17 @@ static inline uint32_t ioref(struct io_intf * io) {
 }
 
 static inline void ioclose(struct io_intf * io) {
-    if (io->ops->close != NULL)
+    if (io->refcnt == 0) {
+        return;
+    }
+
+    // decrement reference count
+    io->refcnt -= 1;
+
+    // call the close operation only if the reference count is 0
+    if (io->refcnt == 0 && io->ops->close != NULL) {
         io->ops->close(io);
+    }
 }
 
 static inline long ioread (

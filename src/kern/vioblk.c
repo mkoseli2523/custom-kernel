@@ -312,6 +312,8 @@ int vioblk_open(struct io_intf ** ioptr, void * aux) {
     // return the io interface through ioptr
     *ioptr = &dev->io_intf;
 
+    (*ioptr)->refcnt = 1;
+
     // mark device as opened
     dev->opened = 1;
 

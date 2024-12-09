@@ -51,7 +51,7 @@
         ld      x13, 13*8(a1)   # x13 is a3
         ld      x12, 12*8(a1)   # x12 is a2
         # ld      x11, 11*8(a1)   # x11 is a1
-        ld      x10, 10*8(a1)   # x10 is a0
+        # ld      x10, 10*8(a1)   # x10 is a0
         ld      x9, 9*8(a1)     # x9 is s1
         ld      x8, 8*8(a1)     # x8 is s0/fp
         ld      x7, 7*8(a1)     # x7 is t2
@@ -61,7 +61,7 @@
         ld      x3, 3*8(a1)     # x3 is gp
         ld      x2, 2*8(a1)     # x2 is sp
         ld      x1, 1*8(a1)     # x1 is ra
-        ld      x0, 0(a1)          # x0 contains tp in user programs
+        # ld      x0, 0(a1)          # x0 contains tp in user programs
         .endm
 
 
@@ -202,8 +202,8 @@ _thread_finish_jump:
         # (e) pc reg is set with teh value of sepc
         
         # set up sscratch to point to stack_anchor
-        ld a0, 0(a0)
-        ld a0, 13*8(a0)
+        # ld a0, 0(a0)
+        # ld a0, 13*8(a0)
         csrw sscratch, a0
 
         # set up sstatus
@@ -250,21 +250,25 @@ _thread_finish_fork:
         # switch to the new child process thread
         mv      tp, a0
 
-        # store sp in sscratch
-        # csrw    sscratch, sp
+        # put child tid as the return value of parent tfr
+        ld      t6, 0*8(a0)
+        sd      t6, 10*8(a1)
+
+        li      a0, 0
 
         # restore the saved trap frame 
         restore_trap_frame_except_t6_and_a1
 
-        # set a0 to 0 in child frame
-        li x10, 0
-
         # restore a1 and t6
         restore_sepc_and_sstatus
 
+        # set sscratch
+        ld      t6, 15*8(tp)
+        csrw    sscratch, t6
+
         # restore stvec to point to trap entry from umode
-        la t6, _trap_entry_from_umode
-        csrw stvec, t6
+        la      t6, _trap_entry_from_umode
+        csrw    stvec, t6
 
         ld      x31, 31*8(a1)   # x31 is t6
         ld      x11, 11*8(a1)   # x11 is a1

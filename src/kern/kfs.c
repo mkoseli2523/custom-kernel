@@ -242,6 +242,8 @@ int fs_open(const char* name, struct io_intf** ioptr) {
     file->flags = 1;                        // mark file as in use
     file->io.ops = &fs_io_ops;
     *ioptr = &file->io;
+
+    (*ioptr)->refcnt = 1;
    
     // succesfully opened file return 0
     console_printf("file opened successfully. file position: %d file size: %d inode number: %d\n",

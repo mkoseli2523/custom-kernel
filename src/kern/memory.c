@@ -752,10 +752,9 @@ uintptr_t memory_space_clone(uint_fast16_t asid){
 
     memset(new_root, 0, PAGE_SIZE); // Zero out the new root table
 
-    // make a shallow copy of the kernel image
     for (int i = 0; i < PTE_CNT; i++) {
-        if (main_pt2[i].flags & PTE_G)
-            child_root[i] = main_pt2[i]; // if its a global mapping copy it over
+        if (main_pt2[i].flags & PTE_G) 
+            child_root[i] = main_pt2[i];
     }
 
     // clone the page table entries
@@ -895,6 +894,8 @@ uintptr_t active_memory_space(void) {
 
 uintptr_t memory_space_switch(uintptr_t mtag) {
     uintptr_t old_mtag = csrrw_satp(mtag);
+
+    sfence_vma();
 
     return old_mtag;
 }

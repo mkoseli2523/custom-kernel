@@ -182,23 +182,20 @@ _trap_entry_from_umode:
         
         csrrw   sp, sscratch, sp
 
+        # get the currently running thread from sscratch
+        ld      sp, 0(sp)
+        mv      tp, sp
+        ld      sp, 15*8(sp)
+
         # Save t6 and original sp to trap frame, then save rest
 
         addi    sp, sp, -34*8   # allocate space for trap frame
         sd      t6, 31*8(sp)    # save t6 (x31) in trap frame
-        addi    t6, sp, 34*8    # save original sp
+        csrr    t6, sscratch    # read sscratch into t6
         sd      t6, 2*8(sp)     #
 
         save_gprs_except_t6_and_sp
         save_sstatus_and_sepc
-
-        # read sscratch into t6 before calling umode trap
-        # which might change the value of sscratch
-        csrr    t6, sscratch
-
-        # after saving s8 move sscratch value into it
-        # since s8 is callee saved it should preserve its value after it returns
-        mv      s8, t6
 
         # update t6 to point to _trap_entry_from_smode
         la t6, _trap_entry_from_smode
@@ -218,15 +215,18 @@ _trap_entry_from_umode:
         csrw stvec, t6
 
         # restore sscratch
-        mv      t6, s8
+        ld      t6, 2*8(sp)
         csrw    sscratch, t6
 
+        # restore everything else
         restore_sstatus_and_sepc
         restore_gprs_except_t6_and_sp
         
         # restore t6, and sp
         ld      t6, 31*8(sp)
-        ld      sp, 2*8(sp)
+        
+        mv      sp, tp
+        ld      sp, 15*8(sp)
 
         csrrw sp, sscratch, sp
 

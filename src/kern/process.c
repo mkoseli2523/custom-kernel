@@ -153,7 +153,7 @@ void __attribute__ ((noreturn)) process_exit(void) {
     // close open io device
     for (int i = 0; i < PROCESS_IOMAX; i++) {
         if (current_proc->iotab[i]) {
-            current_proc->iotab[i]->ops->close(current_proc->iotab[i]);
+            ioclose(current_proc->iotab[i]);
             current_proc->iotab[i] = NULL;
         }
     }
