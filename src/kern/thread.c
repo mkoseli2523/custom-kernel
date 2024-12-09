@@ -358,7 +358,15 @@ void thread_exit(void) {
     suspend_self(); // should not return
     panic("thread_exit() failed");
 }
-
+/**
+ * @brief - Transfers control to user mode.
+ *
+ * Switches the current thread's execution context to user mode by setting 
+ * the user stack pointer (usp) and program counter (upc).
+ *
+ * @param usp: User stack pointer to set for the thread.
+ * @param upc: User program counter to set as the thread's execution start point.
+ */
 void thread_jump_to_user(uintptr_t usp, uintptr_t upc) {
     _thread_finish_jump(CURTHR->stack_base, usp, upc);
 }
