@@ -25,7 +25,7 @@ void main(void) {
         _msgout("Child process: starting operations after parent closes the file");
         
         // Perform write operation
-        const char *child_message = "write something ...\n";
+        const char *child_message = "write something ....\n";
         if (_write(fd, child_message, strlen(child_message)) < 0) {
             _msgout("Child process: _write failed");
             _exit();
