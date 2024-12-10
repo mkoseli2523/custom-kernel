@@ -1,0 +1,21 @@
+=== Regrade.txt ===
+
+== CP1 Lost Points == 
+
+We lost points because our shell wasn't running correctly, 
+We lost a point on the set_pos function within our fs_ioctl. A variable was getting clobbered
+because we weren't setting its type correctly, we casted it as an 'int' instead of a 'uint64_t'. You can see
+that the bug is fixed because our 'test_locking' executable utilizes setpos. 
+
+
+== CP2 Lost Points == 
+
+We did not correctly recreate two of the faults to show proper paging implementation, so we rewrote the test
+programs to showcase that. The tests we rewrote to showcase this are located in the src/kern/ directory. These 
+programs are called 'test_non_readable.c' and 'test_non_writable.c'. To run these tests, go into the src/kern/
+directory. 
+
+Run the makefile using "make run-test_non_readable" to test "Reading from a page without read 
+permissions". 
+
+Run the makefile using "make run-test_non_writable" to test "Writing to a page without write permissions".
